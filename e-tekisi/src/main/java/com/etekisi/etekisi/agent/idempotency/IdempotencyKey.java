@@ -6,11 +6,12 @@ import lombok.Data;
 import java.time.Instant;
 
 /**
- * Persistent idempotency receipt — see V3__idempotency_keys.sql.
+ * Persistent idempotency receipt — see V3__idempotency_keys.sql and V8.
  *
- * <p>Created on the first successful execution of a write and consulted on
- * every subsequent request bearing the same {@code Idempotency-Key} header
- * for the same route. Uniqueness on (key, route) is the contract.
+ * <p>Claimed ({@code IN_PROGRESS}) before the write runs and completed with
+ * the response afterwards. Every later request bearing the same
+ * {@code Idempotency-Key} for the same user + route gets the stored
+ * response. Uniqueness on (key, route) is the contract.
  */
 @Entity
 @Table(
@@ -25,6 +26,9 @@ import java.time.Instant;
 @Data
 public class IdempotencyKey {
 
+    public static final String IN_PROGRESS = "IN_PROGRESS";
+    public static final String COMPLETED = "COMPLETED";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -35,7 +39,10 @@ public class IdempotencyKey {
     @Column(nullable = false, length = 128)
     private String route;
 
-    @Column(name = "response_hash", nullable = false, length = 128)
+    @Column(nullable = false, length = 16)
+    private String state = COMPLETED;
+
+    @Column(name = "response_hash", length = 128)
     private String responseHash;
 
     @Column(name = "response_body", columnDefinition = "TEXT")

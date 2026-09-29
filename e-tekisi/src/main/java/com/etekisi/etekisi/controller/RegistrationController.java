@@ -3,16 +3,24 @@ package com.etekisi.etekisi.controller;
 import com.etekisi.etekisi.config.JwtTokenService;
 import com.etekisi.etekisi.dto.api.CommuterDto;
 import com.etekisi.etekisi.dto.api.DriverDto;
-import com.etekisi.etekisi.model.User;
+import com.etekisi.etekisi.dto.api.LoginRequest;
+import com.etekisi.etekisi.dto.api.RegisterCommuterRequest;
+import com.etekisi.etekisi.dto.api.RegisterDriverRequest;
 import com.etekisi.etekisi.model.Driver;
-import com.etekisi.etekisi.repository.UserRepository;
+import com.etekisi.etekisi.model.Role;
+import com.etekisi.etekisi.model.StaffUser;
+import com.etekisi.etekisi.model.User;
 import com.etekisi.etekisi.repository.DriverRepository;
+import com.etekisi.etekisi.repository.StaffUserRepository;
+import com.etekisi.etekisi.repository.UserRepository;
+import com.etekisi.etekisi.security.CurrentUser;
+import com.etekisi.etekisi.web.ApiException;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,56 +28,60 @@ import java.util.Map;
 @RequestMapping("/api/auth")
 public class RegistrationController {
 
-    @Autowired private UserRepository userRepository;
-    @Autowired private DriverRepository driverRepository;
-    @Autowired private BCryptPasswordEncoder passwordEncoder;
-    @Autowired private JwtTokenService jwt;
+    private final UserRepository userRepository;
+    private final DriverRepository driverRepository;
+    private final StaffUserRepository staffRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
+    private final JwtTokenService jwt;
+    private final CurrentUser currentUser;
+    /** Compared against when the email is unknown, so a miss costs the same as a wrong password. */
+    private final String dummyHash;
+
+    public RegistrationController(UserRepository userRepository,
+                                  DriverRepository driverRepository,
+                                  StaffUserRepository staffRepository,
+                                  BCryptPasswordEncoder passwordEncoder,
+                                  JwtTokenService jwt,
+                                  CurrentUser currentUser) {
+        this.userRepository = userRepository;
+        this.driverRepository = driverRepository;
+        this.staffRepository = staffRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwt = jwt;
+        this.currentUser = currentUser;
+        this.dummyHash = passwordEncoder.encode("timing-equaliser-not-a-real-password");
+    }
 
     @PostMapping("/register/commuter")
-    public Map<String, Object> registerUser(@Valid @RequestBody User user) {
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
+    @Transactional
+    public Map<String, Object> registerUser(@Valid @RequestBody RegisterCommuterRequest req) {
+        if (userRepository.existsByEmailIgnoreCase(req.email())) {
+            throw ApiException.conflict("EMAIL_TAKEN", "An account with this email already exists.");
+        }
+        User user = new User();
+        user.setFullName(req.fullName());
+        user.setEmail(req.email());
+        user.setPhoneNumber(req.phoneNumber());
+        user.setPassword(passwordEncoder.encode(req.password()));
         User saved = userRepository.save(user);
-        return Map.of(
-                "status", "REGISTERED",
-                "userId", saved.getId(),
-                "role", "COMMUTER"
-        );
+        return Map.of("status", "REGISTERED", "userId", saved.getId(), "role", Role.COMMUTER.name());
     }
 
     @PostMapping("/register/driver")
-    public Map<String, Object> registerDriver(@Valid @RequestBody Driver driver) {
-        driver.setPassword(passwordEncoder.encode(driver.getPassword()));
+    @Transactional
+    public Map<String, Object> registerDriver(@Valid @RequestBody RegisterDriverRequest req) {
+        if (driverRepository.existsByEmailIgnoreCase(req.email())) {
+            throw ApiException.conflict("EMAIL_TAKEN", "An account with this email already exists.");
+        }
+        Driver driver = new Driver();
+        driver.setFullName(req.fullName());
+        driver.setEmail(req.email());
+        driver.setPhoneNumber(req.phoneNumber());
+        driver.setTaxiPlate(req.taxiPlate());
+        driver.setLicenseNumber(req.licenseNumber());
+        driver.setPassword(passwordEncoder.encode(req.password()));
         Driver saved = driverRepository.save(driver);
-        return Map.of(
-                "status", "REGISTERED",
-                "userId", saved.getId(),
-                "role", "DRIVER"
-        );
-    }
-
-    @PutMapping("/driver/{id}/complete-trip")
-    public DriverDto completeTrip(@PathVariable Long id, @RequestParam Double amount) {
-        return driverRepository.findById(id).map(driver -> {
-            driver.setBalance(driver.getBalance() + amount);
-            driver.setTripsCompleted(driver.getTripsCompleted() + 1);
-            return DriverDto.from(driverRepository.save(driver));
-        }).orElse(null);
-    }
-
-    /**
-     * Bounded login request DTO — replaces {@code Map<String,String>} so the
-     * payload is validated and self-documenting.
-     */
-    public static class LoginRequest {
-        @NotBlank private String email;
-        @NotBlank private String password;
-        @NotBlank private String role; // COMMUTER | DRIVER | OPERATOR | ADMIN
-        public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
-        public String getPassword() { return password; }
-        public void setPassword(String password) { this.password = password; }
-        public String getRole() { return role; }
-        public void setRole(String role) { this.role = role; }
+        return Map.of("status", "REGISTERED", "userId", saved.getId(), "role", Role.DRIVER.name());
     }
 
     /**
@@ -79,34 +91,50 @@ public class RegistrationController {
      */
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest creds) {
-        String email = creds.getEmail();
-        String password = creds.getPassword();
-        String role = creds.getRole();
+        String email = creds.email().trim();
+        String password = creds.password();
 
-        if ("COMMUTER".equals(role)) {
-            User user = userRepository.findByEmail(email).orElse(null);
-            if (user != null && passwordEncoder.matches(password, user.getPassword())) {
-                return ok(user.getId(), "COMMUTER");
+        switch (creds.role()) {
+            case COMMUTER -> {
+                User user = userRepository.findByEmailIgnoreCase(email).orElse(null);
+                if (matches(password, user != null ? user.getPassword() : null)) {
+                    return ok(user.getId(), Role.COMMUTER);
+                }
             }
-        } else if ("DRIVER".equals(role)) {
-            Driver driver = driverRepository.findByEmail(email).orElse(null);
-            if (driver != null && passwordEncoder.matches(password, driver.getPassword())) {
-                return ok(driver.getId(), "DRIVER");
+            case DRIVER -> {
+                Driver driver = driverRepository.findByEmailIgnoreCase(email).orElse(null);
+                if (matches(password, driver != null ? driver.getPassword() : null)) {
+                    return ok(driver.getId(), Role.DRIVER);
+                }
+            }
+            case OPERATOR, ADMIN -> {
+                StaffUser staff = staffRepository.findByEmailIgnoreCase(email).orElse(null);
+                if (matches(password, staff != null ? staff.getPassword() : null)) {
+                    return ok(staff.getId(), staff.getRole());
+                }
             }
         }
-        // No role match, no user found, or wrong password — same response.
+        // No user found or wrong password — same response either way.
         Map<String, Object> failed = new HashMap<>();
         failed.put("status", "FAIL");
         failed.put("message", "Invalid email or password");
         return ResponseEntity.status(401).body(failed);
     }
 
-    private ResponseEntity<Map<String, Object>> ok(Long userId, String role) {
-        String token = jwt.mint(userId, role);
+    private boolean matches(String raw, String hash) {
+        if (hash == null) {
+            passwordEncoder.matches(raw, dummyHash);
+            return false;
+        }
+        return passwordEncoder.matches(raw, hash);
+    }
+
+    private ResponseEntity<Map<String, Object>> ok(Long userId, Role role) {
+        String token = jwt.mint(userId, role.name());
         Map<String, Object> body = new HashMap<>();
         body.put("status", "SUCCESS");
         body.put("userId", userId);
-        body.put("role", role);
+        body.put("role", role.name());
         body.put("token", token);
         body.put("tokenType", "Bearer");
         body.put("expiresInSeconds", jwt.expirySeconds());
@@ -115,17 +143,23 @@ public class RegistrationController {
 
     @GetMapping("/commuter/{id}")
     public CommuterDto getCommuter(@PathVariable Long id) {
-        return userRepository.findById(id).map(CommuterDto::from).orElse(null);
+        currentUser.requireSelf(id, Role.COMMUTER);
+        return userRepository.findById(id).map(CommuterDto::from)
+                .orElseThrow(() -> ApiException.notFound("Commuter"));
     }
 
     @GetMapping("/driver/{id}")
     public DriverDto getDriver(@PathVariable Long id) {
-        return driverRepository.findById(id).map(DriverDto::from).orElse(null);
+        currentUser.requireSelf(id, Role.DRIVER);
+        return driverRepository.findById(id).map(DriverDto::from)
+                .orElseThrow(() -> ApiException.notFound("Driver"));
     }
 
     @PutMapping("/driver/{id}/status")
+    @Transactional
     public DriverDto toggleStatus(@PathVariable Long id, @RequestParam boolean active) {
-        Driver driver = driverRepository.findById(id).orElseThrow();
+        currentUser.requireSelf(id, Role.DRIVER);
+        Driver driver = driverRepository.findById(id).orElseThrow(() -> ApiException.notFound("Driver"));
         driver.setActive(active);
         return DriverDto.from(driverRepository.save(driver));
     }

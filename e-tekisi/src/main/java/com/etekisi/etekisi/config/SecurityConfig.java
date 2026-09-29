@@ -2,9 +2,9 @@ package com.etekisi.etekisi.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -28,20 +28,20 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Two-mode security configuration.
+ * Security configuration: every endpoint requires a valid HS256 JWT in the
+ * {@code Authorization: Bearer …} header, except the explicit public
+ * allow-list (auth, actuator/health, OpenAPI docs).
  *
- * <p><b>jwt mode</b> (production default, enforced when
- * {@code tekisi.security.mode=jwt}): every endpoint requires a valid HS256
- * JWT in the {@code Authorization: Bearer …} header, except the explicit
- * public allow-list (auth, actuator/health, swagger if added later).
- * Role-based access is enforced via {@link
- * org.springframework.security.access.prepost.PreAuthorize} on controller
- * methods AND via path matchers below as defense-in-depth.
+ * <p>Two layers:
+ * <ul>
+ *   <li>Path matchers below gate each area by role (coarse).</li>
+ *   <li>Controllers check ownership through {@code CurrentUser}: a caller can
+ *       only read or change their own bookings, wallet, notifications, etc.
+ *       (fine-grained).</li>
+ * </ul>
  *
- * <p><b>permit-all mode</b> (used by integration tests, set via
- * {@code tekisi.security.mode=permit-all} in {@code src/test/resources/
- * application.properties}): keeps the legacy wide-open chain so existing
- * MockMvc tests don't have to mint JWTs. CORS rules are still applied.
+ * <p>There is no permit-all mode any more. Tests authenticate with
+ * {@code SecurityMockMvcRequestPostProcessors.jwt()}.
  */
 @Configuration
 @EnableWebSecurity
@@ -60,20 +60,18 @@ public class SecurityConfig {
     }
 
     /**
-     * Production / default chain. Active unless {@code tekisi.security.mode}
-     * is explicitly set to {@code permit-all}. Models the role hierarchy:
+     * Role hierarchy:
      * <ul>
-     *   <li>commuter — books, pays, receives notifications.</li>
-     *   <li>driver   — accepts/completes trips, posts location, joins queues.</li>
+     *   <li>commuter — books, pays, chats, receives notifications.</li>
+     *   <li>driver   — accepts/completes trips, posts location, joins queues, cashes out.</li>
      *   <li>operator — observes the agent layer and operational insights.</li>
      *   <li>admin    — superset, used for support tooling.</li>
      * </ul>
      */
     @Bean
-    @ConditionalOnProperty(name = "tekisi.security.mode", havingValue = "jwt", matchIfMissing = true)
     public SecurityFilterChain jwtFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable()) // stateless API; CSRF is moot.
+                .csrf(csrf -> csrf.disable()) // stateless bearer-token API; no cookies, so CSRF is moot.
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -91,16 +89,23 @@ public class SecurityConfig {
                         ).permitAll()
                         // Operator-only observability endpoints.
                         .requestMatchers("/actuator/**").hasAnyRole("OPERATOR", "ADMIN")
+                        // Panic button: any signed-in trip participant (checked in the controller).
+                        .requestMatchers(HttpMethod.POST, "/api/agents/safety/panic").authenticated()
                         // Agent surface — operators only (read-only insight + dispatch).
-                        .requestMatchers("/api/agents/**", "/api/insights/**", "/api/payouts/**")
+                        .requestMatchers("/api/agents/**", "/api/insights/**")
                             .hasAnyRole("OPERATOR", "ADMIN")
-                        // Driver-only writes — accept/complete/decline/queue/location.
-                        .requestMatchers("/api/bookings/*/accept/**",
+                        // Driver areas. Controllers additionally check the driver is acting as themselves.
+                        .requestMatchers("/api/payouts/**").hasAnyRole("DRIVER", "OPERATOR", "ADMIN")
+                        .requestMatchers("/api/bookings/pending",
+                                         "/api/bookings/*/accept/**",
                                          "/api/bookings/*/complete/**",
                                          "/api/bookings/*/decline/**",
-                                         "/api/locations/driver/**",
+                                         "/api/locations/update",
                                          "/api/queue/**")
                             .hasAnyRole("DRIVER", "OPERATOR", "ADMIN")
+                        // Commuter areas.
+                        .requestMatchers("/api/wallet/**", "/api/saved-ranks/**", "/api/bookings/create")
+                            .hasAnyRole("COMMUTER", "OPERATOR", "ADMIN")
                         // Default: any authenticated principal can hit the rest of /api/**.
                         .requestMatchers("/api/**").authenticated()
                         // Anything else (e.g. static error pages) — deny.
@@ -109,21 +114,6 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
 
-        return http.build();
-    }
-
-    /**
-     * Test / legacy chain. Active only when {@code tekisi.security.mode=permit-all}.
-     * Mirrors the prior wide-open behaviour so existing MockMvc tests keep
-     * passing while the prod profile enforces JWT.
-     */
-    @Bean
-    @ConditionalOnProperty(name = "tekisi.security.mode", havingValue = "permit-all")
-    public SecurityFilterChain permitAllFilterChain(HttpSecurity http) throws Exception {
-        http
-                .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }
 

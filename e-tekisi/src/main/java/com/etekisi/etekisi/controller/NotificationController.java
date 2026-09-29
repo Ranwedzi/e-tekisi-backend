@@ -1,66 +1,71 @@
 package com.etekisi.etekisi.controller;
 
+import com.etekisi.etekisi.dto.api.ApiRecords.CountResponse;
+import com.etekisi.etekisi.dto.api.ApiRecords.NotificationDto;
 import com.etekisi.etekisi.model.DashboardNotification;
+import com.etekisi.etekisi.model.Role;
 import com.etekisi.etekisi.repository.NotificationRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.etekisi.etekisi.security.CurrentUser;
+import com.etekisi.etekisi.web.ApiException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/** The caller's own notifications. Who the caller is comes from the JWT. */
 @RestController
 @RequestMapping("/api/notifications")
 public class NotificationController {
 
-    @Autowired
-    private NotificationRepository notificationRepository;
+    private final NotificationRepository notifications;
+    private final CurrentUser currentUser;
 
-    /**
-     * GET: Fetch real-time unread notifications for a specific user.
-     * This uses the Repository method you provided to pull data directly from the DB.
-     */
-    @GetMapping("/{role}/{userId}")
-    public List<DashboardNotification> getNotifications(@PathVariable String role, @PathVariable Long userId) {
-        return notificationRepository.findByUserIdAndRoleAndIsReadFalseOrderByCreatedAtDesc(userId, role);
+    public NotificationController(NotificationRepository notifications, CurrentUser currentUser) {
+        this.notifications = notifications;
+        this.currentUser = currentUser;
     }
 
-    /**
-     * PUT: Mark a specific notification as read.
-     * When the user clicks an individual notification, this updates the DB.
-     */
+    /** Unread notifications, newest first. */
+    @GetMapping
+    public List<NotificationDto> getNotifications() {
+        return notifications
+                .findByUserIdAndRoleAndIsReadFalseOrderByCreatedAtDesc(currentUser.id(), currentUser.role())
+                .stream().map(NotificationDto::from).toList();
+    }
+
+    @GetMapping("/unread-count")
+    public CountResponse unreadCount() {
+        return new CountResponse(notifications.countByUserIdAndRoleAndIsReadFalse(currentUser.id(), currentUser.role()));
+    }
+
     @PutMapping("/read/{id}")
+    @Transactional
     public void markAsRead(@PathVariable Long id) {
-        notificationRepository.findById(id).ifPresent(notification -> {
-            notification.setRead(true);
-            notificationRepository.save(notification);
-        });
+        DashboardNotification n = ownNotification(id);
+        n.setRead(true);
     }
 
-    /**
-     * PUT: Mark all notifications as read for a specific user.
-     * This is called when the user clicks "Clear" or "Mark all as read" in the UI.
-     */
-    @PutMapping("/read-all/{role}/{userId}")
-    public void markAllAsRead(@PathVariable String role, @PathVariable Long userId) {
-        List<DashboardNotification> unread = notificationRepository
-                .findByUserIdAndRoleAndIsReadFalseOrderByCreatedAtDesc(userId, role);
-
+    @PutMapping("/read-all")
+    @Transactional
+    public void markAllAsRead() {
+        List<DashboardNotification> unread = notifications
+                .findByUserIdAndRoleAndIsReadFalseOrderByCreatedAtDesc(currentUser.id(), currentUser.role());
         unread.forEach(n -> n.setRead(true));
-        notificationRepository.saveAll(unread);
     }
 
-    /**
-     * DELETE: Permanently remove a notification from the database.
-     */
     @DeleteMapping("/{id}")
+    @Transactional
     public void deleteNotification(@PathVariable Long id) {
-        notificationRepository.deleteById(id);
+        notifications.delete(ownNotification(id));
     }
 
-    /**
-     * DELETE: Remove all notifications.
-     */
-    @DeleteMapping("/clear-all")
-    public void clearAll() {
-        notificationRepository.deleteAll();
+    private DashboardNotification ownNotification(Long id) {
+        DashboardNotification n = notifications.findById(id).orElseThrow(() -> ApiException.notFound("Notification"));
+        Role role = currentUser.role();
+        if (!n.getUserId().equals(currentUser.id()) || n.getRole() != role) {
+            throw new AccessDeniedException("Not your notification");
+        }
+        return n;
     }
 }

@@ -7,6 +7,7 @@ import com.etekisi.etekisi.agent.guardrail.PolicyEngine;
 import com.etekisi.etekisi.agent.guardrail.TrustedDataService;
 import com.etekisi.etekisi.agent.guardrail.TrustedFact;
 import com.etekisi.etekisi.model.Booking;
+import com.etekisi.etekisi.model.BookingStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -78,7 +79,7 @@ class SafetyAgentTest {
     private Booking booking() {
         Booking b = new Booking();
         b.setId(1L);
-        b.setStatus("ACCEPTED");
+        b.setStatus(BookingStatus.ACCEPTED);
         return b;
     }
 

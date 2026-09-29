@@ -4,6 +4,7 @@ import com.etekisi.etekisi.agent.audit.DecisionAuditLogger;
 import com.etekisi.etekisi.agent.dto.DispatchDecision;
 import com.etekisi.etekisi.agent.guardrail.*;
 import com.etekisi.etekisi.model.Booking;
+import com.etekisi.etekisi.model.BookingStatus;
 import com.etekisi.etekisi.model.DriverLocation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,10 +13,11 @@ import org.mockito.Mockito;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 
 class DispatchAgentTest {
@@ -33,10 +35,10 @@ class DispatchAgentTest {
         agent = new DispatchAgent(trusted, props, new DecisionGate(), new PolicyEngine(), audit);
 
         // Default safe stubs.
-        Mockito.when(trusted.countRecentDeclines(anyLong()))
-                .thenReturn(TrustedFact.of(0, "BookingDeclineRepository"));
-        Mockito.when(trusted.getDriverQueuePosition(anyLong(), anyString()))
-                .thenReturn(TrustedFact.of(-1, "QueueRepository"));
+        Mockito.when(trusted.countRecentDeclinesFor(anyCollection()))
+                .thenReturn(TrustedFact.of(Map.of(), "BookingDeclineRepository"));
+        Mockito.when(trusted.getQueueAtRank(anyString()))
+                .thenReturn(TrustedFact.of(List.of(), "QueueRepository"));
     }
 
     @Test
@@ -108,7 +110,7 @@ class DispatchAgentTest {
         Booking b = new Booking();
         b.setId(id);
         b.setCommuterId(100L);
-        b.setStatus("PENDING");
+        b.setStatus(BookingStatus.PENDING);
         b.setPickupLocation("Park Station");
         b.setDestination("Baragwanath");
         return b;

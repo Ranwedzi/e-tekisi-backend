@@ -1,12 +1,11 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
-import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
+/** API input uses CreateBookingRequest; API output uses BookingDto. */
 @Entity
 @Table(name = "bookings", schema = "commuter_schema")
 @Data
@@ -15,28 +14,34 @@ public class Booking {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotNull
+    @Column(nullable = false)
     private Long commuterId;
 
     private Long driverId;
 
-    @NotBlank
-    @Size(max = 200)
+    @Column(nullable = false, length = 200)
     private String pickupLocation;
 
-    @NotBlank
-    @Size(max = 200)
+    @Column(nullable = false, length = 200)
     private String destination;
 
-    @Size(max = 50)
+    @Column(length = 50)
     private String scheduledTime;
 
-    @PositiveOrZero
-    private Double fare;
+    @Column(precision = 12, scale = 2)
+    private BigDecimal fare;
 
-    @PositiveOrZero
-    private Double tip;
+    @Column(precision = 12, scale = 2)
+    private BigDecimal tip;
 
-    @Size(max = 32)
-    private String status = "PENDING";
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private BookingStatus status = BookingStatus.PENDING;
+
+    /** Fare plus tip; zero when neither is set. */
+    public BigDecimal total() {
+        BigDecimal f = fare != null ? fare : BigDecimal.ZERO;
+        BigDecimal t = tip != null ? tip : BigDecimal.ZERO;
+        return f.add(t);
+    }
 }

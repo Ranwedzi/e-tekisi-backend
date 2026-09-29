@@ -1,12 +1,9 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+/** A commuter account. API input uses RegisterCommuterRequest; API output uses CommuterDto. */
 @Entity
 @Table(name = "users", schema = "commuter_schema")
 @Data
@@ -15,21 +12,16 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank
-    @Size(min = 2, max = 120)
+    @Column(nullable = false, length = 120)
     private String fullName;
 
-    @NotBlank
-    @Email
-    @Size(max = 200)
+    @Column(nullable = false, length = 200, unique = true)
     private String email;
 
-    @NotBlank
-    // SA mobile numbers are typically 10 digits; permit + and country-code variations.
-    @Pattern(regexp = "^[+]?[0-9 ()-]{8,20}$", message = "phoneNumber must be 8-20 digits/+/-/space/parentheses")
+    @Column(nullable = false, length = 20)
     private String phoneNumber;
 
-    @NotBlank
-    @Size(min = 6, max = 200)
+    /** BCrypt hash. */
+    @Column(nullable = false, length = 200)
     private String password;
 }
