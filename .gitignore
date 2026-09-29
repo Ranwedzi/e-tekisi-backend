@@ -1,0 +1,7 @@
+postgres_data/
+.idea/
+.DS_Store
+
+# local secrets / build output
+.env
+target/

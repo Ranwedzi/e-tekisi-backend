@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Structured logging configuration for Tekisi.
+
+    Two profiles:
+      - dev: human-readable colorized console (default).
+      - prod: JSON line-per-event via logstash-logback-encoder, with explicit
+        correlation-id, agent, bookingId, driverId fields lifted from MDC.
+
+    The MDC keys are populated by:
+      - CorrelationIdFilter (correlationId) on every HTTP request.
+      - AgentAsyncConfig TaskDecorator preserves them across @Async hops.
+      - Agent code paths push 'agent', 'bookingId', 'driverId' opportunistically.
+
+    Anti-leak posture: never log raw request bodies or auth headers from this
+    config; that responsibility lives in the global exception handler and
+    controllers, not the logging framework.
+-->
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <springProperty scope="context" name="app.profile" source="spring.profiles.active" defaultValue="dev"/>
+    <springProperty scope="context" name="app.name" source="spring.application.name" defaultValue="tekisi-backend"/>
+
+    <!-- =================== DEV: pretty console =================== -->
+    <springProfile name="dev,test,default">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} corr=%X{correlationId:-} agent=%X{agent:-} - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <logger name="com.etekisi" level="DEBUG"/>
+        <logger name="org.springframework.security" level="INFO"/>
+    </springProfile>
+
+    <!-- =================== PROD: JSON =================== -->
+    <springProfile name="prod">
+        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+                <providers>
+                    <timestamp>
+                        <fieldName>ts</fieldName>
+                        <pattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</pattern>
+                    </timestamp>
+                    <logLevel>
+                        <fieldName>level</fieldName>
+                    </logLevel>
+                    <loggerName>
+                        <fieldName>logger</fieldName>
+                        <shortenedLoggerNameLength>40</shortenedLoggerNameLength>
+                    </loggerName>
+                    <threadName>
+                        <fieldName>thread</fieldName>
+                    </threadName>
+                    <message>
+                        <fieldName>msg</fieldName>
+                    </message>
+                    <stackTrace>
+                        <fieldName>stack</fieldName>
+                        <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                            <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                            <rootCauseFirst>true</rootCauseFirst>
+                        </throwableConverter>
+                    </stackTrace>
+                    <!-- Lift specific MDC keys to first-class JSON fields so dashboards can pivot -->
+                    <mdc>
+                        <includeMdcKeyName>correlationId</includeMdcKeyName>
+                        <includeMdcKeyName>agent</includeMdcKeyName>
+                        <includeMdcKeyName>bookingId</includeMdcKeyName>
+                        <includeMdcKeyName>driverId</includeMdcKeyName>
+                    </mdc>
+                    <pattern>
+                        <pattern>
+                            {
+                              "service": "${app.name}",
+                              "profile": "${app.profile}"
+                            }
+                        </pattern>
+                    </pattern>
+                </providers>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+        </root>
+
+        <logger name="com.etekisi" level="INFO"/>
+        <logger name="org.springframework.security" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="WARN"/>
+    </springProfile>
+
+</configuration>

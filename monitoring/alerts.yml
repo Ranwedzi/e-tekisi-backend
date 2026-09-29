@@ -1,0 +1,121 @@
+# Tekisi production Prometheus alert rules (Phase 2.5).
+#
+# Drop into Prometheus / AlertManager via:
+#   rule_files:
+#     - /etc/prometheus/rules/tekisi-alerts.yml
+#
+# Severity routing convention:
+#   - severity=critical => PagerDuty / SMS (wakes on-call).
+#   - severity=warning  => Slack / email digest.
+#
+# Every alert has an associated runbook URL. Keep the URL stable; the runbook
+# itself lives in docs/runbooks/<short-name>.md and is updated independently.
+
+groups:
+  - name: tekisi-http
+    interval: 30s
+    rules:
+      - alert: HttpServerErrorRateHigh
+        expr: |
+          (sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+           /
+           sum(rate(http_server_requests_seconds_count[5m]))) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Tekisi 5xx rate >1% for 5m"
+          runbook: "https://runbooks.tekisi/5xx-rate-high"
+
+      - alert: BookingCreateLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket{uri="/api/bookings/create"}[10m]))
+          ) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 latency on POST /api/bookings/create > 800ms for 10m"
+          runbook: "https://runbooks.tekisi/booking-latency"
+
+  - name: tekisi-agent
+    interval: 30s
+    rules:
+      - alert: AgentFallbackRateHigh
+        expr: sum(rate(tekisi_agent_fallbacks_total[5m])) > 5/60
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent fallbacks > 5/min sustained — quality degradation"
+          runbook: "https://runbooks.tekisi/agent-fallbacks"
+
+      - alert: RoutingApiCircuitOpen
+        # resilience4j_circuitbreaker_state{name="routingApi", state="open"} == 1
+        expr: max by (name) (resilience4j_circuitbreaker_state{name="routingApi", state="open"}) == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "External routing API circuit breaker OPEN > 1m — heuristic-only ETAs"
+          runbook: "https://runbooks.tekisi/routing-circuit-open"
+
+      - alert: AuditPersistFailures
+        expr: increase(tekisi_audit_persist_failures_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "decision_audit persist failures > 0 — audit gap forming"
+          runbook: "https://runbooks.tekisi/audit-persist"
+
+      - alert: SafetyCriticalAlerts
+        expr: increase(tekisi_safety_alerts_total{severity="CRITICAL"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Safety CRITICAL alert fired — page on-call"
+          runbook: "https://runbooks.tekisi/safety-critical"
+
+      - alert: EventDropped
+        expr: increase(tekisi_events_dropped_total[1m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Async event dropped — backpressure or listener crash"
+          runbook: "https://runbooks.tekisi/event-dropped"
+
+  - name: tekisi-platform
+    interval: 30s
+    rules:
+      - alert: HikariPoolNearExhaustion
+        # hikaricp_connections_active{} / hikaricp_connections_max{} > 0.9
+        expr: (hikaricp_connections_active / hikaricp_connections_max) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hikari pool utilization > 90% for 5m"
+          runbook: "https://runbooks.tekisi/db-pool"
+
+      - alert: LivenessProbeFailing
+        # Synthesized from blackbox or kube probe failures; placeholder expression.
+        expr: probe_success{job="tekisi-liveness"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "/actuator/health/liveness failing for 2m"
+          runbook: "https://runbooks.tekisi/liveness"
+
+      - alert: DiskSpaceHigh
+        expr: (node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk usage > 85% — audit retention may be lagging"
+          runbook: "https://runbooks.tekisi/disk"

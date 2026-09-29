@@ -1,0 +1,68 @@
+# Golden-eval set for Phase 3.5 LLM intent. Format:
+#   utterance | expected_origin_token | expected_destination_token
+#
+# Tokens are the SUBSTRING that should appear in the LLM-extracted origin
+# or destination guess (case-insensitive). Token "-" means "no expectation".
+#
+# 50 baseline examples covering the 10 most common SA Eng/Zulu/Sotho
+# phrasings. Expand to 200 before flipping the production flag.
+
+# English direct
+I need a taxi from Bree to Sandton | Bree | Sandton
+Take me from Park Station to Soweto | Park Station | Soweto
+Pick me up at MTN Taxi Rank, dropping in Randburg | MTN | Randburg
+Going from Noord to Alex please | Noord | Alex
+I'm at Bree Taxi Rank, heading to Roodepoort | Bree | Roodepoort
+From Faraday to Eldorado Park | Faraday | Eldorado
+From Wanderers Rank to Midrand | Wanderers | Midrand
+Bree Street to Fourways | Bree | Fourways
+Newtown rank to Edenvale | Newtown | Edenvale
+From Carlton to Centurion | Carlton | Centurion
+
+# English casual
+I'm going home to Soweto from Bree | Bree | Soweto
+Can you take me to Sandton, I'm at MTN rank | MTN | Sandton
+Pick up at Park Station drop at Alex | Park Station | Alex
+Heading to Tembisa, I'm at Bree | Bree | Tembisa
+Need a ride to Randburg | - | Randburg
+I want to go Soweto | - | Soweto
+Drop off at Sandton | - | Sandton
+Take me to Tembisa from MTN | MTN | Tembisa
+At Noord going Roodepoort | Noord | Roodepoort
+At Bree I want Soweto | Bree | Soweto
+
+# Zulu/Xhosa hybrids
+Ngiya eSandton, ngise eBree | Bree | Sandton
+Ngithathe eMTN ngiye eSoweto | MTN | Soweto
+Ngise Park Station ngiya eRandburg | Park Station | Randburg
+Ngifuna ukuya eAlex ngise Bree | Bree | Alex
+Eku Noord ngiya eFourways | Noord | Fourways
+Ngiya eSandton phuma eMTN | MTN | Sandton
+Ngise Bree ngifuna eRoodepoort | Bree | Roodepoort
+Ngiya eMidrand ngise Carlton | Carlton | Midrand
+NgiseFaraday ngiya eSoweto | Faraday | Soweto
+Yiza Bree ngiyaSandton | Bree | Sandton
+
+# Sotho/Tswana hybrids
+Ke kopa taxi ho tloha Bree ho ya Soweto | Bree | Soweto
+Ke ho MTN ke ya Sandton | MTN | Sandton
+Ke batla ho ya Randburg ke ho Park Station | Park Station | Randburg
+Ke tloha Noord ke ya Tembisa | Noord | Tembisa
+Ke tla be ke le Bree, ke ya Alex | Bree | Alex
+Ke kopa Sandton ke ho MTN | MTN | Sandton
+Ke ho Bree ke batla Soweto | Bree | Soweto
+Ke ho Carlton ke ya Centurion | Carlton | Centurion
+Ke kopa lift Faraday ho ya Eldorado | Faraday | Eldorado
+Ho ya Midrand from Wanderers | Wanderers | Midrand
+
+# Edge cases — partial info
+Going to Sandton | - | Sandton
+At Bree | Bree | -
+I need a taxi | - | -
+Just a ride home | - | -
+Pick me up | - | -
+Drop me at Soweto Mall taxi rank | - | Soweto
+I'm at Park Station Taxi Rank waiting | Park Station | -
+Help me with a trip from Noord | Noord | -
+Sandton please | - | Sandton
+Need to get to Alex from MTN rank now | MTN | Alex
