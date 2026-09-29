@@ -10,9 +10,15 @@ import com.etekisi.etekisi.agent.event.SafetyIncidentDetectedEvent;
 import com.etekisi.etekisi.agent.guardrail.PolicyEngine;
 import com.etekisi.etekisi.agent.hotspot.HotspotService;
 import com.etekisi.etekisi.agent.intent.TripIntentAgent;
+import com.etekisi.etekisi.agent.observability.CorrelationContext;
 import com.etekisi.etekisi.agent.safety.SafetyAgent;
 import com.etekisi.etekisi.model.Booking;
+import com.etekisi.etekisi.model.BookingStatus;
+import com.etekisi.etekisi.model.Role;
 import com.etekisi.etekisi.repository.BookingRepository;
+import com.etekisi.etekisi.security.CurrentUser;
+import com.etekisi.etekisi.service.BookingService;
+import com.etekisi.etekisi.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -51,10 +57,19 @@ public class AgentController {
     @Autowired(required = false)
     private BookingRepository bookings;
 
+    @Autowired(required = false)
+    private BookingService bookingService;
+
+    @Autowired(required = false)
+    private NotificationService notifications;
+
+    @Autowired(required = false)
+    private CurrentUser currentUser;
+
     /**
      * Phase 3.3 — global kill switch. When false the autonomous endpoint
-     * never mutates the booking; it only persists a PENDING recommendation.
-     * Default false — production must opt in explicitly via env var.
+     * only persists a PENDING recommendation. Default false — production must
+     * opt in explicitly via env var.
      */
     @Value("${tekisi.agent.dispatch.autonomous-enabled:false}")
     private boolean autonomousEnabled;
@@ -91,7 +106,7 @@ public class AgentController {
     /**
      * Phase 3.3 — autonomous dispatch endpoint, OPERATOR-only via SecurityConfig.
      *
-     * <p>Two gates must be open for the booking to mutate:
+     * <p>Two gates must be open for the agent to act:
      * <ol>
      *   <li>{@code tekisi.agent.dispatch.autonomous-enabled=true} — the
      *       global kill switch.</li>
@@ -100,6 +115,11 @@ public class AgentController {
      * </ol>
      * Otherwise the agent persists a PENDING recommendation that operators
      * confirm in the OpsConsole.
+     *
+     * <p>"Acting" means offering the trip to the recommended driver by
+     * notification. The agent never sets a booking to ACCEPTED itself: the
+     * fare is the driver's to set, and accepting is what charges the
+     * commuter's wallet, so it must go through the normal accept flow.
      *
      * <p>Every call writes a row to {@code agent_schema.dispatch_recommendation}
      * carrying the decision's confidence + reason codes — the canary
@@ -115,7 +135,7 @@ public class AgentController {
         response.put("decision", decision);
 
         boolean policyAutonomous = policy != null && policy.isDispatchAutonomous(decision);
-        boolean willMutate = autonomousEnabled && policyAutonomous;
+        boolean willAct = autonomousEnabled && policyAutonomous;
 
         DispatchRecommendation rec = new DispatchRecommendation();
         rec.setBookingId(req.bookingId());
@@ -125,7 +145,7 @@ public class AgentController {
         rec.setCorrelationId(correlationId);
         rec.setCreatedAt(Instant.now());
 
-        if (!willMutate) {
+        if (!willAct) {
             rec.setStatus(policyAutonomous
                     ? DispatchRecommendation.Status.PENDING
                     : DispatchRecommendation.Status.REJECTED);
@@ -138,40 +158,29 @@ public class AgentController {
             return response;
         }
 
-        // Mutate the booking via the trusted repository — keeps the
-        // BookingController's accept path as the system of record for
-        // hand-driver acceptance, but allows the agent to commit when
-        // policy + flag both green-light.
-        if (bookings != null && decision.assignedDriverId() != null) {
-            try {
-                Booking b = bookings.findById(req.bookingId()).orElse(null);
-                if (b != null && "PENDING".equals(b.getStatus())) {
-                    b.setDriverId(decision.assignedDriverId());
-                    b.setStatus("ACCEPTED");
-                    bookings.save(b);
-                    if (events != null) {
-                        events.publish(events.tripStarted(
-                                b.getId(), decision.assignedDriverId(),
-                                b.getCommuterId(), b.getFare()));
-                    }
-                    rec.setStatus(DispatchRecommendation.Status.EXECUTED);
-                    rec.setDecidedAt(Instant.now());
-                    response.put("autonomous", true);
-                    response.put("assignedDriverId", decision.assignedDriverId());
-                } else {
-                    rec.setStatus(DispatchRecommendation.Status.REJECTED);
-                    response.put("autonomous", false);
-                    response.put("reason", "booking-not-pending");
-                }
-            } catch (RuntimeException mutationFail) {
-                rec.setStatus(DispatchRecommendation.Status.REJECTED);
-                response.put("autonomous", false);
-                response.put("reason", "mutation-failed");
-            }
-        } else {
+        Booking b = bookings != null ? bookings.findById(req.bookingId()).orElse(null) : null;
+        if (b == null || b.getStatus() != BookingStatus.PENDING) {
+            rec.setStatus(DispatchRecommendation.Status.REJECTED);
+            response.put("autonomous", false);
+            response.put("reason", "booking-not-pending");
+        } else if (decision.assignedDriverId() == null || notifications == null) {
             rec.setStatus(DispatchRecommendation.Status.REJECTED);
             response.put("autonomous", false);
             response.put("reason", "no-driver-assigned");
+        } else {
+            try {
+                notifications.send(decision.assignedDriverId(), Role.DRIVER,
+                        "New trip request near you: " + b.getPickupLocation() + " to " + b.getDestination()
+                                + ". Open Incoming Requests to set a fare and accept.");
+                rec.setStatus(DispatchRecommendation.Status.EXECUTED);
+                rec.setDecidedAt(Instant.now());
+                response.put("autonomous", true);
+                response.put("offeredToDriverId", decision.assignedDriverId());
+            } catch (RuntimeException offerFail) {
+                rec.setStatus(DispatchRecommendation.Status.REJECTED);
+                response.put("autonomous", false);
+                response.put("reason", "offer-failed");
+            }
         }
 
         persistRec(rec);
@@ -212,7 +221,7 @@ public class AgentController {
     }
 
     /**
-     * Phase 3.4 — commuter panic button.
+     * Phase 3.4 — commuter / driver panic button.
      *
      * <p>Calls the deterministic SafetyAgent.panic() (already CRITICAL by
      * construction, downgraded to HUMAN_REVIEW_REQUIRED by PolicyEngine) and
@@ -222,6 +231,11 @@ public class AgentController {
      */
     @PostMapping("/safety/panic")
     public SafetyAlert panic(@RequestParam Long bookingId) {
+        // Open to any authenticated user in SecurityConfig; only the trip's
+        // commuter, its driver, or staff may raise the alarm for it.
+        if (bookingService != null && currentUser != null) {
+            bookingService.requireParticipant(bookingId, currentUser.id(), currentUser.role());
+        }
         String correlationId = corr();
         SafetyAlert alert = safety.panic(bookingId, correlationId);
         if (events != null) {
@@ -240,5 +254,9 @@ public class AgentController {
         return intent.interpret(req.text(), corr());
     }
 
-    private static String corr() { return UUID.randomUUID().toString(); }
+    /** The request's correlation id (set by CorrelationIdFilter), so decisions line up with logs. */
+    private static String corr() {
+        String id = CorrelationContext.get();
+        return id != null && !id.isBlank() ? id : UUID.randomUUID().toString();
+    }
 }

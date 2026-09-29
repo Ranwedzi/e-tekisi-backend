@@ -1,8 +1,20 @@
 package com.etekisi.etekisi.repository;
 
 import com.etekisi.etekisi.model.Driver;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.Optional;
 
 public interface DriverRepository extends JpaRepository<Driver, Long> {
-    java.util.Optional<Driver> findByEmail(String email);
+    Optional<Driver> findByEmailIgnoreCase(String email);
+
+    boolean existsByEmailIgnoreCase(String email);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select d from Driver d where d.id = :id")
+    Optional<Driver> findByIdForUpdate(@Param("id") Long id);
 }

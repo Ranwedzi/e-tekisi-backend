@@ -2,13 +2,17 @@ package com.etekisi.etekisi.dto.api;
 
 import com.etekisi.etekisi.model.Driver;
 
+import java.math.BigDecimal;
+
 /**
  * Bounded API projection of {@link Driver}.
  *
  * <p>Critical security note: the source entity carries the bcrypt-hashed
- * password and the email used as a login identifier. This projection drops
- * the password hash entirely and exposes the email only on owner-scoped
- * endpoints (the frontend should not surface other drivers' emails).
+ * password. This projection drops it. It is only returned on owner-scoped
+ * endpoints, so the email and balance are safe to include.
+ *
+ * <p>The online flag is named {@code active} (not {@code isActive}) because
+ * that is the JSON property the frontend reads.
  */
 public record DriverDto(
         Long id,
@@ -17,9 +21,9 @@ public record DriverDto(
         String phoneNumber,
         String taxiPlate,
         String licenseNumber,
-        Double balance,
+        BigDecimal balance,
         Integer tripsCompleted,
-        boolean isActive
+        boolean active
 ) {
     public static DriverDto from(Driver d) {
         if (d == null) return null;

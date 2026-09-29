@@ -1,37 +1,72 @@
 package com.etekisi.etekisi.controller;
 
+import com.etekisi.etekisi.dto.api.ApiRecords.JoinQueueRequest;
+import com.etekisi.etekisi.model.Driver;
 import com.etekisi.etekisi.model.QueueTicket;
+import com.etekisi.etekisi.model.Role;
 import com.etekisi.etekisi.model.TaxiRank;
+import com.etekisi.etekisi.repository.DriverRepository;
 import com.etekisi.etekisi.repository.QueueRepository;
 import com.etekisi.etekisi.repository.RankRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.etekisi.etekisi.security.CurrentUser;
+import com.etekisi.etekisi.web.ApiException;
+import jakarta.validation.Valid;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 
+/** Rank queues. Drivers manage only their own ticket; the driver id comes from the token. */
 @RestController
 @RequestMapping("/api/queue")
 public class QueueController {
 
-    @Autowired private QueueRepository queueRepository;
+    static final String WAITING = "WAITING";
+    static final String SERVING = "SERVING";
+    static final String COMPLETED = "COMPLETED";
+    private static final List<String> LIVE = List.of(WAITING, SERVING);
 
-    @Autowired private RankRepository rankRepository;
+    private final QueueRepository queueRepository;
+    private final RankRepository rankRepository;
+    private final DriverRepository driverRepository;
+    private final CurrentUser currentUser;
+
+    public QueueController(QueueRepository queueRepository, RankRepository rankRepository,
+                           DriverRepository driverRepository, CurrentUser currentUser) {
+        this.queueRepository = queueRepository;
+        this.rankRepository = rankRepository;
+        this.driverRepository = driverRepository;
+        this.currentUser = currentUser;
+    }
 
     @PostMapping("/join")
-    public QueueTicket joinQueue(@RequestBody QueueTicket ticket) {
-        // Prevent duplicate active tickets for the same driver
-        var existing = queueRepository.findByDriverIdAndStatus(ticket.getDriverId(), "WAITING");
+    @Transactional
+    public QueueTicket joinQueue(@Valid @RequestBody JoinQueueRequest req) {
+        Long driverId = currentUser.requireRole(Role.DRIVER);
+        // A driver holds at most one live ticket, at any rank.
+        var existing = queueRepository.findFirstByDriverIdAndStatusIn(driverId, LIVE);
         if (existing.isPresent()) return existing.get();
 
+        Driver driver = driverRepository.findById(driverId).orElseThrow(() -> ApiException.notFound("Driver"));
+        QueueTicket ticket = new QueueTicket();
+        ticket.setDriverId(driverId);
+        ticket.setDriverName(driver.getFullName());
+        ticket.setTaxiRank(req.taxiRank().trim());
         ticket.setJoinedAt(LocalDateTime.now());
-        ticket.setStatus("WAITING");
+        ticket.setStatus(WAITING);
         return queueRepository.save(ticket);
     }
 
+    /** The rank's live queue: the driver currently loading first, then waiting drivers in order. */
     @GetMapping("/status/{rank}")
     public List<QueueTicket> getRankQueue(@PathVariable String rank) {
-        // Returns both WAITING and SERVING drivers sorted by time
-        return queueRepository.findByTaxiRankAndStatusOrderByJoinedAtAsc(rank, "WAITING");
+        return queueRepository.findByTaxiRankAndStatusInOrderByJoinedAtAsc(rank, LIVE).stream()
+                .sorted(Comparator.comparing((QueueTicket t) -> SERVING.equals(t.getStatus()) ? 0 : 1)
+                        .thenComparing(QueueTicket::getJoinedAt))
+                .toList();
     }
 
     @GetMapping("/ranks")
@@ -40,26 +75,46 @@ public class QueueController {
     }
 
     @PutMapping("/skip/{ticketId}")
+    @Transactional
     public QueueTicket skipTurn(@PathVariable Long ticketId) {
-        QueueTicket ticket = queueRepository.findById(ticketId).orElseThrow();
-        // Reset time to "now" to put them at the back of the line
+        QueueTicket ticket = ownTicket(ticketId);
+        if (!WAITING.equals(ticket.getStatus())) {
+            throw ApiException.conflict("TICKET_NOT_WAITING", "Only a waiting ticket can skip its turn.");
+        }
+        // Reset time to "now" to put them at the back of the line.
         ticket.setJoinedAt(LocalDateTime.now());
         ticket.setSkipCount(ticket.getSkipCount() + 1);
-        return queueRepository.save(ticket);
+        return ticket;
     }
 
     @PutMapping("/serve/{ticketId}")
+    @Transactional
     public QueueTicket startServing(@PathVariable Long ticketId) {
-        QueueTicket ticket = queueRepository.findById(ticketId).orElseThrow();
-        ticket.setStatus("SERVING");
+        QueueTicket ticket = ownTicket(ticketId);
+        if (!WAITING.equals(ticket.getStatus())) {
+            throw ApiException.conflict("TICKET_NOT_WAITING", "This ticket is not waiting.");
+        }
+        List<QueueTicket> waiting = queueRepository.findByTaxiRankAndStatusOrderByJoinedAtAsc(ticket.getTaxiRank(), WAITING);
+        if (waiting.isEmpty() || !waiting.get(0).getId().equals(ticket.getId())) {
+            throw ApiException.conflict("NOT_FIRST_IN_QUEUE", "Only the driver at the front of the queue can start loading.");
+        }
+        ticket.setStatus(SERVING);
         ticket.setServedAt(LocalDateTime.now());
-        return queueRepository.save(ticket);
+        return ticket;
     }
 
     @PutMapping("/complete/{ticketId}")
+    @Transactional
     public void completeTurn(@PathVariable Long ticketId) {
-        QueueTicket ticket = queueRepository.findById(ticketId).orElseThrow();
-        ticket.setStatus("COMPLETED");
-        queueRepository.save(ticket);
+        QueueTicket ticket = ownTicket(ticketId);
+        ticket.setStatus(COMPLETED);
+    }
+
+    private QueueTicket ownTicket(Long ticketId) {
+        QueueTicket ticket = queueRepository.findById(ticketId).orElseThrow(() -> ApiException.notFound("Queue ticket"));
+        if (!currentUser.isStaff() && !ticket.getDriverId().equals(currentUser.requireRole(Role.DRIVER))) {
+            throw new AccessDeniedException("Not your queue ticket");
+        }
+        return ticket;
     }
 }

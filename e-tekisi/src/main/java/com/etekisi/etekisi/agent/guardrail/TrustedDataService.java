@@ -10,8 +10,11 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -28,6 +31,9 @@ public class TrustedDataService {
 
     /** Driver location pings older than this are treated as unknown. */
     public static final Duration DRIVER_LOCATION_TTL = Duration.ofSeconds(30);
+
+    /** "Recent" declines, for dispatch scoring: a decline last month says little about today. */
+    public static final Duration DECLINE_WINDOW = Duration.ofHours(24);
 
     private final BookingRepository bookings;
     private final DriverRepository drivers;
@@ -128,20 +134,35 @@ public class TrustedDataService {
         return TrustedFact.of(-1, "QueueRepository");
     }
 
+    /** Declines by this driver within {@link #DECLINE_WINDOW}. */
     public TrustedFact<Integer> countRecentDeclines(Long driverId) {
         if (driverId == null) return TrustedFact.missing("BookingDeclineRepository");
-        return TrustedFact.of(declines.findByDriverId(driverId).size(), "BookingDeclineRepository");
+        long n = declines.countByDriverIdAndCreatedAtAfter(driverId, LocalDateTime.now().minus(DECLINE_WINDOW));
+        return TrustedFact.of((int) n, "BookingDeclineRepository");
+    }
+
+    /**
+     * Declines within {@link #DECLINE_WINDOW} for many drivers in one query.
+     * Drivers with no declines are absent from the map (treat as 0).
+     */
+    public TrustedFact<Map<Long, Integer>> countRecentDeclinesFor(Collection<Long> driverIds) {
+        if (driverIds == null || driverIds.isEmpty()) return TrustedFact.of(Map.of(), "BookingDeclineRepository");
+        Map<Long, Integer> counts = new HashMap<>();
+        for (Object[] row : declines.countByDriverIdsSince(driverIds, LocalDateTime.now().minus(DECLINE_WINDOW))) {
+            counts.put((Long) row[0], ((Number) row[1]).intValue());
+        }
+        return TrustedFact.of(counts, "BookingDeclineRepository");
     }
 
     public TrustedFact<List<Booking>> getPendingBookings() {
-        return TrustedFact.of(bookings.findByStatus("PENDING"), "BookingRepository");
+        return TrustedFact.of(bookings.findByStatus(BookingStatus.PENDING), "BookingRepository");
     }
 
     /** Active = ACCEPTED (driver assigned, trip in progress). */
     public TrustedFact<List<Booking>> getActiveBookingsForDriver(Long driverId) {
         if (driverId == null) return TrustedFact.missing("BookingRepository");
         return TrustedFact.of(
-                bookings.findByDriverIdAndStatus(driverId, "ACCEPTED"),
+                bookings.findByDriverIdAndStatus(driverId, BookingStatus.ACCEPTED),
                 "BookingRepository");
     }
 

@@ -1,17 +1,21 @@
 package com.etekisi.etekisi.dto.api;
 
 import com.etekisi.etekisi.model.Booking;
+import com.etekisi.etekisi.model.Driver;
+import com.etekisi.etekisi.model.User;
 
-import java.util.Collection;
-import java.util.List;
+import java.math.BigDecimal;
 
 /**
  * Bounded API projection of {@link Booking}.
  *
- * <p>Exists to stop JPA entities from leaking through controller responses.
- * The entity carries Hibernate proxy metadata, lazy-loading hooks, and may
- * later gain audit columns we do not want to ship to the frontend by accident
+ * <p>Exists to stop JPA entities from leaking through controller responses
  * — every field here is opted in deliberately.
+ *
+ * <p>The contact fields ({@code driverName}, {@code driverPhone},
+ * {@code taxiPlate}, {@code commuterName}, {@code commuterPhone}) are only
+ * filled in for the booking's own participants once a driver has accepted;
+ * otherwise they are null.
  *
  * <p>Frontend consumers should treat this as the contract.
  */
@@ -22,11 +26,20 @@ public record BookingDto(
         String pickupLocation,
         String destination,
         String scheduledTime,
-        Double fare,
-        Double tip,
-        String status
+        BigDecimal fare,
+        BigDecimal tip,
+        String status,
+        String driverName,
+        String driverPhone,
+        String taxiPlate,
+        String commuterName,
+        String commuterPhone
 ) {
     public static BookingDto from(Booking b) {
+        return from(b, null, null);
+    }
+
+    public static BookingDto from(Booking b, Driver driver, User commuter) {
         if (b == null) return null;
         return new BookingDto(
                 b.getId(),
@@ -37,12 +50,12 @@ public record BookingDto(
                 b.getScheduledTime(),
                 b.getFare(),
                 b.getTip(),
-                b.getStatus()
+                b.getStatus() != null ? b.getStatus().name() : null,
+                driver != null ? driver.getFullName() : null,
+                driver != null ? driver.getPhoneNumber() : null,
+                driver != null ? driver.getTaxiPlate() : null,
+                commuter != null ? commuter.getFullName() : null,
+                commuter != null ? commuter.getPhoneNumber() : null
         );
-    }
-
-    public static List<BookingDto> from(Collection<Booking> bs) {
-        if (bs == null) return List.of();
-        return bs.stream().map(BookingDto::from).toList();
     }
 }

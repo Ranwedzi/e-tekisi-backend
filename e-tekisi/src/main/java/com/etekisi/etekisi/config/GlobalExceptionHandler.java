@@ -1,15 +1,19 @@
 package com.etekisi.etekisi.config;
 
 import com.etekisi.etekisi.agent.observability.CorrelationContext;
+import com.etekisi.etekisi.web.ApiException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -18,6 +22,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * Uniform RFC 7807 (ProblemDetail) error envelope across the API.
@@ -27,12 +32,24 @@ import java.util.Map;
  *   <li>Correlation-id always echoed so log lookups are trivial.</li>
  *   <li>No leakage of stack traces or DB internals into the response body.</li>
  *   <li>Validation errors enumerate the offending fields.</li>
+ *   <li>The right status code: 4xx for client mistakes, 500 only for real bugs.</li>
  * </ul>
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(ApiException.class)
+    public ProblemDetail onApi(ApiException ex) {
+        Map<String, Object> extras = new LinkedHashMap<>(ex.getExtras());
+        extras.put("code", ex.getCode());
+        return problem(ex.getStatus(),
+                ex.getStatus().getReasonPhrase(),
+                ex.getMessage(),
+                "https://tekisi.dev/problems/" + ex.getCode().toLowerCase().replace('_', '-'),
+                extras);
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail onValidation(MethodArgumentNotValidException ex) {
@@ -43,7 +60,7 @@ public class GlobalExceptionHandler {
                 "Request validation failed",
                 "One or more fields failed validation.",
                 "https://tekisi.dev/problems/validation-failed",
-                Map.of("fieldErrors", fields));
+                Map.of("fieldErrors", fields, "code", "VALIDATION_FAILED"));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -55,7 +72,7 @@ public class GlobalExceptionHandler {
                 "Constraint violation",
                 "A constraint on the request was violated.",
                 "https://tekisi.dev/problems/constraint-violation",
-                Map.of("violations", fields));
+                Map.of("violations", fields, "code", "VALIDATION_FAILED"));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -66,7 +83,7 @@ public class GlobalExceptionHandler {
                 "Malformed request body",
                 "Request body could not be parsed.",
                 "https://tekisi.dev/problems/malformed-body",
-                Map.of());
+                Map.of("code", "MALFORMED_BODY"));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -75,7 +92,7 @@ public class GlobalExceptionHandler {
                 "Invalid request parameter",
                 "Parameter '" + ex.getName() + "' has an invalid value.",
                 "https://tekisi.dev/problems/invalid-parameter",
-                Map.of("parameter", ex.getName()));
+                Map.of("parameter", ex.getName(), "code", "INVALID_PARAMETER"));
     }
 
     @ExceptionHandler({AuthenticationException.class, AuthenticationCredentialsNotFoundException.class})
@@ -84,7 +101,7 @@ public class GlobalExceptionHandler {
                 "Authentication required",
                 "A valid bearer token is required.",
                 "https://tekisi.dev/problems/unauthenticated",
-                Map.of());
+                Map.of("code", "UNAUTHENTICATED"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -93,7 +110,29 @@ public class GlobalExceptionHandler {
                 "Access denied",
                 "You do not have permission to access this resource.",
                 "https://tekisi.dev/problems/access-denied",
-                Map.of());
+                Map.of("code", "ACCESS_DENIED"));
+    }
+
+    @ExceptionHandler(NoSuchElementException.class)
+    public ProblemDetail onNotFound(NoSuchElementException ex) {
+        return problem(HttpStatus.NOT_FOUND,
+                "Not found",
+                "The requested resource does not exist.",
+                "https://tekisi.dev/problems/not-found",
+                Map.of("code", "NOT_FOUND"));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail onDataIntegrity(DataIntegrityViolationException ex) {
+        // Usually a unique-constraint race (duplicate email, duplicate wallet).
+        // The DB message can name tables and columns, so it is logged, not returned.
+        log.warn("data.integrity.violation correlationId={} message={}",
+                CorrelationContext.get(), ex.getMostSpecificCause().getMessage());
+        return problem(HttpStatus.CONFLICT,
+                "Conflict",
+                "The request conflicts with existing data.",
+                "https://tekisi.dev/problems/conflict",
+                Map.of("code", "CONFLICT"));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -102,22 +141,35 @@ public class GlobalExceptionHandler {
                 "Invalid argument",
                 ex.getMessage() != null ? ex.getMessage() : "Invalid argument.",
                 "https://tekisi.dev/problems/invalid-argument",
-                Map.of());
+                Map.of("code", "INVALID_ARGUMENT"));
     }
 
     /**
-     * Catch-all. Logs at ERROR with correlation-id; returns a sanitized 500.
-     * Stack traces never reach the wire.
+     * Catch-all. Spring's own web exceptions (ResponseStatusException, missing
+     * parameter, unknown route, wrong method, …) implement ErrorResponse and
+     * keep their status. Anything else is a bug: logged at ERROR with the
+     * correlation-id and returned as a sanitized 500.
      */
     @ExceptionHandler(Exception.class)
     public ProblemDetail onUnhandled(Exception ex) {
+        if (ex instanceof ErrorResponse er) {
+            HttpStatusCode status = er.getStatusCode();
+            ProblemDetail pd = er.getBody();
+            pd.setProperty("correlationId", CorrelationContext.get());
+            pd.setProperty("code", HttpStatus.valueOf(status.value()).name());
+            if (status.is5xxServerError()) {
+                log.error("web.error correlationId={} status={} message={}",
+                        CorrelationContext.get(), status.value(), ex.getMessage(), ex);
+            }
+            return pd;
+        }
         log.error("unhandled.exception correlationId={} type={} message={}",
                 CorrelationContext.get(), ex.getClass().getSimpleName(), ex.getMessage(), ex);
         return problem(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Internal server error",
                 "An unexpected error occurred. The incident has been logged.",
                 "https://tekisi.dev/problems/internal-error",
-                Map.of());
+                Map.of("code", "INTERNAL_ERROR"));
     }
 
     private ProblemDetail problem(HttpStatus status, String title, String detail,

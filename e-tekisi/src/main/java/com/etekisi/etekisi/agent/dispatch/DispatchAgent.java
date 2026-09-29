@@ -71,10 +71,31 @@ public class DispatchAgent {
             return publish(noMatch(booking.getId(), ctx, false), List.of(), summary(booking));
         }
 
-        // 3. Score each candidate from trusted fields only.
+        // 3. Load decline counts and the pickup rank's queue once for all
+        //    candidates (not one query per driver).
+        List<Long> candidateIds = active.stream()
+                .map(DriverLocation::getDriverId).filter(Objects::nonNull).distinct().toList();
+        TrustedFact<Map<Long, Integer>> declineFact = trusted.countRecentDeclinesFor(candidateIds);
+        ctx.consulted(declineFact);
+        Map<Long, Integer> declineCounts = declineFact.asOptional().orElse(Map.of());
+
+        // Queue position: only meaningful if we know which rank — use booking pickup as best-effort label
+        Map<Long, Integer> queuePositions = new HashMap<>();
+        if (booking.getPickupLocation() != null) {
+            TrustedFact<List<QueueTicket>> q = trusted.getQueueAtRank(booking.getPickupLocation());
+            ctx.consulted(q);
+            List<QueueTicket> tickets = q.asOptional().orElse(List.of());
+            for (int i = 0; i < tickets.size(); i++) {
+                queuePositions.putIfAbsent(tickets.get(i).getDriverId(), i);
+            }
+        }
+
+        // 4. Score each candidate from trusted fields only.
         List<DispatchDecision.Candidate> ranked = new ArrayList<>();
         for (DriverLocation loc : active) {
-            DispatchDecision.Candidate c = scoreCandidate(loc, commuterLat, commuterLng, booking, ctx);
+            DispatchDecision.Candidate c = scoreCandidate(loc, commuterLat, commuterLng,
+                    declineCounts.getOrDefault(loc.getDriverId(), 0),
+                    queuePositions.getOrDefault(loc.getDriverId(), -1), ctx);
             if (c != null) ranked.add(c);
         }
         ranked.sort(Comparator.comparingDouble(DispatchDecision.Candidate::score).reversed());
@@ -88,7 +109,7 @@ public class DispatchAgent {
         double confidence = computeConfidence(top, ranked);
         ctx.withConfidence(confidence).addReason(ReasonCode.SCORED);
 
-        // 4. Gate before publishing assignment.
+        // 5. Gate before publishing assignment.
         if (top.score() < props.getDispatch().getMinActionableScore()
                 || !gate.isActionable(ctx.seal(), props.getDispatch().getMinActionableConfidence())) {
             ctx.addReason(ReasonCode.INSUFFICIENT_CONFIDENCE).markFallback();
@@ -106,7 +127,7 @@ public class DispatchAgent {
                 ranked,
                 ctx.seal());
 
-        // 5. Policy authorisation (no autonomous assignment if degraded).
+        // 6. Policy authorisation (no autonomous assignment if degraded).
         if (!policy.isDispatchAutonomous(decision)) {
             DispatchDecision held = new DispatchDecision(
                     booking.getId(),
@@ -121,7 +142,8 @@ public class DispatchAgent {
     private DispatchDecision.Candidate scoreCandidate(DriverLocation loc,
                                                       double commuterLat,
                                                       double commuterLng,
-                                                      Booking booking,
+                                                      int recentDeclines,
+                                                      int queuePos,
                                                       DecisionContext ctx) {
         Long driverId = loc.getDriverId();
         if (driverId == null || loc.getLat() == null || loc.getLng() == null) return null;
@@ -137,18 +159,6 @@ public class DispatchAgent {
         if (!fresh) {
             // we can rank stale drivers as fallbacks but never autonomously assign them
             ctx.markDegraded();
-        }
-
-        TrustedFact<Integer> declines = trusted.countRecentDeclines(driverId);
-        ctx.consulted(declines);
-        int recentDeclines = declines.asOptional().orElse(0);
-
-        // Queue position: only meaningful if we know which rank — use booking pickup as best-effort label
-        int queuePos = -1;
-        if (booking.getPickupLocation() != null) {
-            TrustedFact<Integer> q = trusted.getDriverQueuePosition(driverId, booking.getPickupLocation());
-            ctx.consulted(q);
-            queuePos = q.asOptional().orElse(-1);
         }
 
         List<ReasonCode> notes = new ArrayList<>();

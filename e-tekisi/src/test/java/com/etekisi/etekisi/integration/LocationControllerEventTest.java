@@ -1,8 +1,7 @@
 package com.etekisi.etekisi.integration;
 
 import com.etekisi.etekisi.agent.event.DriverLocationUpdatedEvent;
-import com.etekisi.etekisi.model.DriverLocation;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.etekisi.etekisi.model.Role;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -10,9 +9,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import static com.etekisi.etekisi.integration.TestAuth.as;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -32,20 +31,14 @@ class LocationControllerEventTest {
     @Autowired private WebApplicationContext context;
     @Autowired private ApplicationEvents events;
 
-    private final ObjectMapper json = new ObjectMapper();
-
-    private MockMvc mvc() { return MockMvcBuilders.webAppContextSetup(context).build(); }
+    private MockMvc mvc() { return TestAuth.mvc(context); }
 
     @Test
     void locationUpdatePublishesEvent() throws Exception {
-        DriverLocation loc = new DriverLocation();
-        loc.setDriverId(7001L);
-        loc.setLat(-26.2041);
-        loc.setLng(28.0473);
-
-        mvc().perform(post("/api/locations/update")
+        // The driver id comes from the token, not the body.
+        mvc().perform(post("/api/locations/update").with(as(Role.DRIVER, 7001L))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(loc)))
+                        .content("{\"lat\":-26.2041,\"lng\":28.0473}"))
                 .andExpect(status().isOk());
 
         DriverLocationUpdatedEvent evt = events.stream(DriverLocationUpdatedEvent.class)
@@ -61,18 +54,31 @@ class LocationControllerEventTest {
     void locationUpdateWithMissingCoordsDoesNotPublishEvent() throws Exception {
         // Anti-hallucination: a partial ping is persisted to the legacy table
         // but the agent layer must NOT receive an event it cannot reason on.
-        DriverLocation loc = new DriverLocation();
-        loc.setDriverId(7002L);
-        // lat/lng intentionally null
-
-        mvc().perform(post("/api/locations/update")
+        // lat/lng intentionally absent
+        mvc().perform(post("/api/locations/update").with(as(Role.DRIVER, 7002L))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(loc)))
+                        .content("{}"))
                 .andExpect(status().isOk());
 
         long count = events.stream(DriverLocationUpdatedEvent.class)
                 .filter(e -> Long.valueOf(7002L).equals(e.driverId()))
                 .count();
         assertThat(count).isZero();
+    }
+
+    @Test
+    void commutersCannotPostDriverLocations() throws Exception {
+        mvc().perform(post("/api/locations/update").with(as(Role.COMMUTER, 7003L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lat\":-26.2,\"lng\":28.0}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anonymousRequestsAreRejected() throws Exception {
+        mvc().perform(post("/api/locations/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lat\":-26.2,\"lng\":28.0}"))
+                .andExpect(status().isUnauthorized());
     }
 }
