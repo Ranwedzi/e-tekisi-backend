@@ -3,9 +3,9 @@ package com.etekisi.etekisi.controller;
 import com.etekisi.etekisi.model.TaxiRank;
 import com.etekisi.etekisi.repository.QueueRepository;
 import com.etekisi.etekisi.repository.RankRepository;
+import com.etekisi.etekisi.service.OsmGateway;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,18 +13,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -32,31 +26,18 @@ import java.util.Set;
 @RequestMapping("/api/ranks")
 public class RankDiscoveryController {
     private static final int DEFAULT_RADIUS_METERS = 8000;
+    private static final int MAX_RADIUS_METERS = 20000;
     private static final int MAX_RESULTS = 50;
-    private static final long CACHE_TTL_MS = 60_000;
-    private static final long MIN_FETCH_INTERVAL_MS = 10_000;
-
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(8))
-            .build();
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RankRepository rankRepository;
+    private final QueueRepository queueRepository;
+    private final OsmGateway osm;
 
-    @Autowired private RankRepository rankRepository;
-    @Autowired private QueueRepository queueRepository;
-
-    private static class CacheEntry {
-        private final long createdAt;
-        private final long fetchedAt;
-        private final Map<String, Object> payload;
-
-        CacheEntry(long createdAt, long fetchedAt, Map<String, Object> payload) {
-            this.createdAt = createdAt;
-            this.fetchedAt = fetchedAt;
-            this.payload = payload;
-        }
+    public RankDiscoveryController(RankRepository rankRepository, QueueRepository queueRepository, OsmGateway osm) {
+        this.rankRepository = rankRepository;
+        this.queueRepository = queueRepository;
+        this.osm = osm;
     }
-
-    private final Map<String, CacheEntry> cache = new HashMap<>();
 
     @GetMapping("/nearby")
     public ResponseEntity<Map<String, Object>> getNearby(
@@ -64,19 +45,14 @@ public class RankDiscoveryController {
             @RequestParam double lng,
             @RequestParam(required = false) Integer radius
     ) {
-        int radiusMeters = radius != null ? radius : DEFAULT_RADIUS_METERS;
-        String cacheKey = cacheKey(lat, lng, radiusMeters);
-        long now = System.currentTimeMillis();
-        CacheEntry cached = cache.get(cacheKey);
-        if (cached != null && now - cached.createdAt < CACHE_TTL_MS) {
-            return ResponseEntity.ok(cached.payload);
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            return ResponseEntity.badRequest().body(Map.of("status", "INVALID_COORDINATES", "ranks", List.of()));
         }
-        if (cached != null && now - cached.fetchedAt < MIN_FETCH_INTERVAL_MS) {
-            return ResponseEntity.ok(cached.payload);
-        }
+        int radiusMeters = Math.min(Math.max(radius != null ? radius : DEFAULT_RADIUS_METERS, 500), MAX_RADIUS_METERS);
 
         try {
-            String overpassQuery = """
+            // Locale.ROOT: in en-ZA "%f" would print a decimal comma and break the query.
+            String overpassQuery = String.format(Locale.ROOT, """
                 [out:json][timeout:8];
                 (
                   node["amenity"="taxi"](around:%d,%f,%f);
@@ -85,29 +61,15 @@ public class RankDiscoveryController {
                   relation["amenity"="taxi"](around:%d,%f,%f);
                 );
                 out center tags;
-                """.formatted(
+                """,
                     radiusMeters, lat, lng,
                     radiusMeters, lat, lng,
                     radiusMeters, lat, lng,
                     radiusMeters, lat, lng
             );
 
-            String body = "data=" + URLEncoder.encode(overpassQuery, StandardCharsets.UTF_8);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://overpass-api.de/api/interpreter"))
-                    .timeout(Duration.ofSeconds(12))
-                    .header("User-Agent", "e-tekisi/1.0")
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                        .body(Map.of("status", "UPSTREAM_ERROR", "ranks", List.of()));
-            }
-
-            JsonNode root = objectMapper.readTree(response.body());
+            // Overpass results are cached for a minute per ~1 km cell; queue sizes are always live.
+            JsonNode root = objectMapper.readTree(osm.overpass(cacheKey(lat, lng, radiusMeters), overpassQuery));
             JsonNode elements = root.path("elements");
             List<Map<String, Object>> ranks = new ArrayList<>();
             Set<String> seenKeys = new HashSet<>();
@@ -162,9 +124,8 @@ public class RankDiscoveryController {
             payload.put("status", "OK");
             payload.put("ranks", ranks);
             payload.put("suggestedKey", suggestRankKey(ranks));
-            cache.put(cacheKey, new CacheEntry(now, now, payload));
             return ResponseEntity.ok(payload);
-        } catch (Exception ex) {
+        } catch (OsmGateway.UpstreamException | java.io.IOException ex) {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                     .body(Map.of("status", "ERROR", "ranks", List.of()));
         }
