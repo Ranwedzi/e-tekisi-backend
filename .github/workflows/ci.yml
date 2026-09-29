@@ -44,16 +44,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fail if known dev password leaks into prod artifacts
-        # The dev default `etekisi@123` is allowed in dev application.properties
-        # only; any other occurrence in source is a leak.
+      - name: Fail if the retired dev password reappears
+        # `etekisi@123` was once committed as the local DB password. It is no
+        # longer used anywhere; any occurrence in source is a leak. .github is
+        # excluded because this step itself has to name it.
         run: |
           set -e
-          MATCHES=$(grep -RIn --exclude-dir=.git --exclude-dir=target \
-                    --exclude='application.properties' \
+          MATCHES=$(grep -RIn --exclude-dir=.git --exclude-dir=target --exclude-dir=.github \
                     'etekisi@123' . || true)
           if [ -n "$MATCHES" ]; then
-            echo "❌ Hard-coded credential leaked outside dev application.properties:"
+            echo "❌ Retired hard-coded credential found:"
             echo "$MATCHES"
             exit 1
           fi
