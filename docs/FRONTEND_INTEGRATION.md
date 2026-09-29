@@ -114,20 +114,20 @@ silently leak it through the API.
 
 ---
 
-### 1.4  Auth posture (no change, just clarifying)
+### 1.4  Auth posture
 
-The backend defaults to `tekisi.security.mode=jwt`. Two practical
-implications for the frontend dev environment:
+Every endpoint except sign-up, login, health and the OpenAPI docs needs a
+valid JWT. **There is no permit-all mode any more** (it was removed because
+the frontend had been developed against it and never sent the token).
 
 - `JWT_SIGNING_SECRET` must be ≥ 32 bytes. The dev fallback in
-  `application.properties` (`dev-only-do-not-use-in-prod-min-32-bytes-xxx`)
-  satisfies this; the prod profile drops it so the app fails fast on a
-  missing env var.
-- For initial wireup of static screens, you can flip to permit-all mode:
-  ```bash
-  TEKISI_SECURITY_MODE=permit-all ./mvnw spring-boot:run
-  ```
-  Flip back to `jwt` before integrating the auth flow.
+  `application.properties` satisfies this; the prod profile drops it so the
+  app fails fast on a missing env var.
+- **Ownership is enforced server-side.** The caller's id and role come from
+  the token (`sub`, `role`). Ids in the URL are checked against it (403 if
+  they don't match) and ids in request bodies (`commuterId`, `driverId`,
+  `senderId`) are ignored. Commuter and driver ids come from separate
+  tables, so the same number can be both; the role is what tells them apart.
 
 CORS already accepts `http://localhost:3000`, `:3001`, `:5173` by
 default. Add your dev origin to `tekisi.cors.allowed-origins` (or env
@@ -209,34 +209,45 @@ JSON is the most common source of bugs in this kind of project.
 
 ## 3. The contract the frontend should code against
 
+"self" means the id in the path must be the caller's own (staff may read any).
+
 ### 3.1 Auth
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| POST | `/api/auth/register/commuter` | `User` (fullName, email, phoneNumber, password) | `{status, userId, role}` |
-| POST | `/api/auth/register/driver` | `Driver` (+ taxiPlate, licenseNumber) | `{status, userId, role}` |
-| POST | `/api/auth/login` | `{email, password, role}` | `{status, userId, role, token, tokenType, expiresInSeconds}` on 200; `{status:"FAIL", message}` on 401 |
-| GET | `/api/auth/commuter/{id}` | — | `CommuterDto` |
-| GET | `/api/auth/driver/{id}` | — | `DriverDto` |
+| POST | `/api/auth/register/commuter` | `{fullName, email, phoneNumber, password}` (password ≥ 8) | `{status, userId, role}`; 409 `EMAIL_TAKEN` |
+| POST | `/api/auth/register/driver` | as above + `taxiPlate`, `licenseNumber` (plate is upper-cased, spaces/dashes removed) | `{status, userId, role}`; 409 `EMAIL_TAKEN` |
+| POST | `/api/auth/login` | `{email, password, role}` (role: COMMUTER, DRIVER, OPERATOR, ADMIN) | `{status, userId, role, token, tokenType, expiresInSeconds}` on 200; `{status:"FAIL", message}` on 401 |
+| GET | `/api/auth/commuter/{id}` | — (self) | `CommuterDto` |
+| GET | `/api/auth/driver/{id}` | — (self) | `DriverDto` (`active` is the online flag) |
+| PUT | `/api/auth/driver/{id}/status?active=true\|false` | — (self) | `DriverDto` |
 
 ### 3.2 Bookings (commuter + driver)
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|
-| POST | `/api/bookings/create` | commuter | `{status, bookingId, booking, message}` |
-| GET | `/api/bookings/pending` | driver | `List<BookingDto>` |
-| GET | `/api/bookings/pending/{driverId}` | driver | `List<BookingDto>` (excludes declined) |
-| GET | `/api/bookings/user/{userId}` | commuter | `List<BookingDto>` |
-| GET | `/api/bookings/driver/{driverId}` | driver | `List<BookingDto>` |
-| GET | `/api/bookings/driver/{driverId}/earnings` | driver | `{totalEarnings, tripCount, history, availableBalance}` |
-| PUT | `/api/bookings/{bookingId}/accept/{driverId}?fare=…` | driver | `{status, fare, driverName, driverPhone, taxiPlate, commuterName, commuterPhone}` |
-| POST | `/api/bookings/{bookingId}/decline/{driverId}` | driver | `{status:"DECLINED"}` |
-| PUT | `/api/bookings/{bookingId}/complete/{driverId}` | driver | `{status, earned}` |
-| PUT | `/api/bookings/{bookingId}/cancel?role=…` | commuter or driver | text |
+| POST | `/api/bookings/create` | commuter; body `{pickupLocation, destination, scheduledTime?, tip?}` | `{status, bookingId, booking, message}` |
+| GET | `/api/bookings/pending` | driver | `List<BookingDto>`: open requests, minus ones this driver declined |
+| GET | `/api/bookings/user/{userId}` | commuter, self | `List<BookingDto>` newest first |
+| GET | `/api/bookings/driver/{driverId}` | driver, self | `List<BookingDto>` newest first |
+| GET | `/api/bookings/driver/{driverId}/earnings` | driver, self | `{totalEarnings, tripCount, availableBalance, history}` |
+| PUT | `/api/bookings/{bookingId}/accept/{driverId}?fare=…` | driver, self | `BookingDto` with contact details. 400 `INVALID_AMOUNT` (fare ≤ 0, above the max, more than 2 decimals); 409 `BOOKING_NOT_PENDING`; 409 `INSUFFICIENT_FUNDS` with `required` and `balance` (the booking stays PENDING) |
+| POST | `/api/bookings/{bookingId}/decline/{driverId}` | driver, self | `{status:"DECLINED"}` |
+| PUT | `/api/bookings/{bookingId}/complete/{driverId}` | assigned driver | `{status, booking, earned}`; 409 `ALREADY_COMPLETED` |
+| PUT | `/api/bookings/{bookingId}/cancel` | the booking's commuter or assigned driver | `BookingDto`. Cancelling an ACCEPTED trip refunds fare + tip; 409 if already cancelled or completed |
 
-**Idempotency:** `POST /create`, `PUT /accept`, `PUT /complete` all
-honour `Idempotency-Key`. On flaky networks, use a UUID per logical
-intent and retry safely.
+`BookingDto` carries `driverName`, `driverPhone`, `taxiPlate`,
+`commuterName`, `commuterPhone` once the booking is ACCEPTED or COMPLETED
+(null before that).
+
+**Money:** the commuter's wallet is charged fare + tip when the driver
+accepts. The driver is credited on complete. Every movement is a row in
+`commuter_schema.wallet_transactions`.
+
+**Idempotency:** `POST /create`, `PUT /accept`, `PUT /complete` and payout
+requests honour `Idempotency-Key`, scoped per user. Use one UUID per logical
+intent and retry safely. A retry while the first is still running gets 409
+`IDEMPOTENCY_IN_PROGRESS`.
 
 **Correlation-ID:** every endpoint accepts `X-Correlation-Id`; if
 omitted, the backend generates one and echoes it back. Always log the
@@ -246,21 +257,40 @@ echoed value on the frontend so support can grep audit rows.
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|
-| GET | `/api/wallet/{userId}?role=COMMUTER\|DRIVER` | self | `Wallet` |
-| POST | `/api/wallet/{userId}/topup?role=…&amount=…` | self | `Wallet` (advisory: payment-risk insight may be persisted) |
-| GET | `/api/payouts/driver/{driverId}` | driver | `List<PayoutRequest>` |
-| POST | `/api/payouts/driver/{driverId}/request` | driver | `{status, requestId}` or `{status:"INSUFFICIENT_FUNDS", available}` |
+| GET | `/api/wallet/{userId}` | commuter, self | `{balance, totalTrips}` |
+| POST | `/api/wallet/{userId}/topup?amount=…` | commuter, self | `{balance, totalTrips}`. R10–R2000. 403 `TOPUP_DISABLED` when no payment provider is configured (always the case in prod until a real gateway is added; the sandbox provider is dev only) |
+| GET | `/api/payouts/driver/{driverId}` | driver, self | `List<PayoutDto>` (account number and phone masked) |
+| POST | `/api/payouts/driver/{driverId}/request` | driver, self; body `{amount, method, bankName?, accountNumber?, accountHolder?, phoneNumber?}` | `PayoutDto`; 409 `INSUFFICIENT_FUNDS` with `available` |
 
-### 3.4 Operator / agent surface
+### 3.4 Notifications, chat, queue, locations
 
-Locked to `ROLE_OPERATOR` or `ROLE_ADMIN` in `SecurityConfig`.
+| Method | Path | Auth | Returns |
+|---|---|---|---|
+| GET | `/api/notifications` | any | the caller's unread notifications |
+| GET | `/api/notifications/unread-count` | any | `{count}` |
+| PUT | `/api/notifications/read/{id}`, `/api/notifications/read-all` | owner | — |
+| DELETE | `/api/notifications/{id}` | owner | — |
+| POST | `/api/messages/send` | booking participant; body `{bookingId, content}` | `MessageDto` (`senderId` and `senderRole` come from the token) |
+| GET | `/api/messages/{bookingId}` | booking participant | `List<MessageDto>` |
+| POST | `/api/queue/join` | driver; body `{taxiRank}` | `QueueTicket` (the existing live ticket if there is one) |
+| GET | `/api/queue/status/{rank}` | driver | the SERVING ticket first, then WAITING in order |
+| PUT | `/api/queue/{skip\|serve\|complete}/{ticketId}` | ticket owner | `QueueTicket`; `serve` only for the front of the queue |
+| POST | `/api/locations/update` | driver; body `{lat, lng}` | — |
+| GET | `/api/locations/nearby` | any | drivers seen in the last 5 minutes |
+| POST | `/api/agents/safety/panic?bookingId=…` | booking participant or staff | `SafetyAlert` |
+
+### 3.5 Operator / agent surface
+
+Locked to `ROLE_OPERATOR` or `ROLE_ADMIN` in `SecurityConfig` (except the
+panic button above). Create the first operator with
+`ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` and log in with
+`role: "OPERATOR"`.
 
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/api/insights?severity=&code=&bookingId=&since=&page=&size=` | `{items, page, size, totalElements, totalPages}` |
 | POST | `/api/agents/dispatch` | `DispatchDecision` |
-| POST | `/api/agents/dispatch/auto` | `{decision, autonomous, recommendationStatus, …}` |
-| POST | `/api/agents/safety/panic?bookingId=…` | `SafetyAlert` (also fans out via `OpsAlertListener`) |
+| POST | `/api/agents/dispatch/auto` | `{decision, autonomous, recommendationStatus, …}`. When it acts, it *offers* the trip to the recommended driver by notification; it never accepts on their behalf |
 | GET | `/api/agents/hotspots` | `HotspotRecommendation` |
 
 ---
@@ -276,6 +306,7 @@ Every controller error returns a uniform `application/problem+json`:
   "status": 400,
   "detail": "Validation failed for one or more fields.",
   "correlationId": "8b6b9f23-d08c-4f3d-9279-9c1b9a11de82",
+  "code": "VALIDATION_FAILED",
   "fieldErrors": {
     "email":      "must be a well-formed email address",
     "phoneNumber":"phoneNumber must be 8-20 digits/+/-/space/parentheses"
@@ -286,6 +317,8 @@ Every controller error returns a uniform `application/problem+json`:
 Frontend should:
 
 - Read `status` and `detail` for the top-level toast.
+- Switch on `code` (e.g. `INSUFFICIENT_FUNDS`, `BOOKING_NOT_PENDING`,
+  `EMAIL_TAKEN`), never on the message text.
 - Read `fieldErrors` (when present) to highlight individual form fields.
 - Log `correlationId` in the browser console — it's the join key with the
   backend audit + Prometheus dashboards.
@@ -303,8 +336,8 @@ Frontend should:
       `DriverDto`, `CommuterDto`.
 - [ ] First end-to-end booking lands a row in `agent_schema.decision_audit`
       with the same correlation-id seen in the browser network tab.
-- [ ] Token expiry handled — the frontend refreshes via re-login (no
-      refresh-token flow yet; see Phase 4 for that).
+- [ ] Token expiry handled — the frontend signs the user out when
+      `expiresInSeconds` passes and on any 401 (no refresh-token flow yet).
 
 ---
 
@@ -333,24 +366,15 @@ training:
 
 ---
 
-## 7. Files changed in this pass
+## 7. History
 
-```
-e-tekisi/pom.xml                                         (+ springdoc dep)
-e-tekisi/src/main/java/com/etekisi/etekisi/
-  config/OpenApiConfig.java                              (new)
-  config/SecurityConfig.java                             (permit swagger paths)
-  controller/BookingController.java                      (DTO projections + create returns JSON)
-  controller/RegistrationController.java                 (DTO projections, password leak fixed)
-  dto/api/BookingDto.java                                (new)
-  dto/api/CommuterDto.java                               (new)
-  dto/api/DriverDto.java                                 (new)
-docs/FRONTEND_INTEGRATION.md                             (this file)
-```
-
-All 71 backend tests pass; the two skips are deliberate gates
-(Testcontainers no-Docker locally, LLM golden-eval no-API-key locally),
-both exercised in CI.
+Sections 1.1–1.3 describe the first frontend-readiness pass. The
+security / money / Flyway pass that followed (see `git log`) changed the
+contract in section 3: permit-all mode and
+`PUT /api/auth/driver/{id}/complete-trip` were removed, notifications no
+longer take ids in the path, `cancel` and the wallet no longer take
+`?role=`, and `/api/bookings/pending/{driverId}` became
+`/api/bookings/pending`.
 
 ---
 

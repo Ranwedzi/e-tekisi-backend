@@ -5,6 +5,8 @@
 //   2) POST /api/bookings/create
 //   3) driver login -> JWT
 //   4) PUT /api/bookings/{id}/accept/{driverId}?fare=...
+//      (accept charges the commuter's wallet: top it up first or accepts
+//       return 409 INSUFFICIENT_FUNDS)
 //   5) PUT /api/bookings/{id}/complete/{driverId}
 //
 // Three load profiles. Pick via env:
