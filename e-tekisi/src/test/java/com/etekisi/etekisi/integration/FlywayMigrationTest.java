@@ -40,15 +40,15 @@ class FlywayMigrationTest {
     void allCheckedInMigrationsApplyCleanly() throws Exception {
         Flyway flyway = Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
-                .schemas("agent_schema")
+                .schemas("agent_schema", "commuter_schema", "driver_schema")
                 .createSchemas(true)
                 .locations("classpath:db/migration")
                 .load();
 
         var result = flyway.migrate();
         assertThat(result.success).isTrue();
-        // V1 (init) + V2 (insights) + V3 (idempotency) — bump as we add more.
-        assertThat(result.migrationsExecuted).isGreaterThanOrEqualTo(3);
+        // V1 (init) .. V8 (money / ledger / idempotency) — bump as we add more.
+        assertThat(result.migrationsExecuted).isGreaterThanOrEqualTo(8);
 
         try (Connection c = DriverManager.getConnection(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
@@ -75,6 +75,26 @@ class FlywayMigrationTest {
                     "select to_regclass('agent_schema.idempotency_keys')")) {
                 rs.next();
                 assertThat(rs.getString(1)).isEqualTo("agent_schema.idempotency_keys");
+            }
+
+            // Core tables (V7) — previously only created by Hibernate ddl-auto.
+            for (String table : new String[]{
+                    "commuter_schema.users", "commuter_schema.bookings", "commuter_schema.wallets",
+                    "commuter_schema.wallet_transactions", "commuter_schema.notifications",
+                    "commuter_schema.messages", "driver_schema.drivers", "driver_schema.payout_requests",
+                    "driver_schema.queue_tickets", "agent_schema.staff_users"}) {
+                try (ResultSet rs = s.executeQuery("select to_regclass('" + table + "')")) {
+                    rs.next();
+                    assertThat(rs.getString(1)).as(table).isEqualTo(table);
+                }
+            }
+
+            // Money is exact decimal, not floating point (V7/V8).
+            try (ResultSet rs = s.executeQuery(
+                    "select data_type from information_schema.columns " +
+                    "where table_schema = 'commuter_schema' and table_name = 'wallets' and column_name = 'balance'")) {
+                rs.next();
+                assertThat(rs.getString(1)).isEqualTo("numeric");
             }
 
             // The unique constraint guards Phase 1.9's correctness contract.

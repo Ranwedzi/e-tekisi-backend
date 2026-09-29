@@ -117,10 +117,12 @@
             <version>2.2.0</version>
         </dependency>
 
-        <!-- Schema migrations: replaces unsafe runtime ddl-auto for agent_schema. -->
+        <!-- Schema migrations. Spring Boot 4 moved Flyway auto-configuration into
+             its own starter; with only flyway-core on the classpath the app
+             never ran its migrations at startup. -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
