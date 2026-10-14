@@ -7,6 +7,23 @@ complete trips and cash out, and operators watch an advisory "agent" layer
 
 The frontend lives in a separate repo (`e-tekisi-frontend`).
 
+## Run everything in Docker
+
+With Docker only (no Java or Node needed), and the frontend repo checked
+out next to this one (`../../e-tekisi-frontend-main/e-tekisi-frontend-main`,
+or set `FRONTEND_DIR` in `.env`):
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+Open `http://localhost:3000`. The backend is on `:8080` (dev profile, so
+sandbox top-ups work) and Postgres on `:5433`, with data kept in
+`./postgres_data`. Stop with `docker compose down`; after code changes,
+run `docker compose up -d --build` again. Production uses
+`e-tekisi/docker-compose.prod.yml`.
+
 ## Run it locally
 
 You need Java 21+, Docker, and ports 5433 and 8080 free.
