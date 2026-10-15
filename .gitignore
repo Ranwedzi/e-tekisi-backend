@@ -5,3 +5,4 @@ postgres_data/
 # local secrets / build output
 .env
 target/
+.env.prod

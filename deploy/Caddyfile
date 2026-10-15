@@ -1,0 +1,46 @@
+# e-Tekisi production proxy: one HTTPS origin for the whole app.
+#
+#   https://{$DOMAIN}/api/*            -> backend
+#   https://{$DOMAIN}/actuator/health  -> backend (load balancer / uptime checks)
+#   everything else                    -> frontend
+#
+# Caddy gets and renews the TLS certificate automatically (Let's Encrypt) as
+# long as DOMAIN's DNS points at this machine and ports 80/443 are open. With
+# DOMAIN=localhost it uses its own local CA instead (for trying it out).
+#
+# Not routed, so not reachable from outside: Swagger UI / OpenAPI docs and the
+# other actuator endpoints (metrics, prometheus). Reach those over SSH or a VPN.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+		-Server
+	}
+
+	@backend path /api/* /actuator/health /actuator/health/*
+	handle @backend {
+		# Sets X-Forwarded-For / -Proto; the backend trusts them
+		# (server.forward-headers-strategy=framework in the prod profile),
+		# so login throttling sees the real client IP.
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
