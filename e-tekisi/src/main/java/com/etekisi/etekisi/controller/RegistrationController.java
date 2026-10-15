@@ -14,7 +14,9 @@ import com.etekisi.etekisi.repository.DriverRepository;
 import com.etekisi.etekisi.repository.StaffUserRepository;
 import com.etekisi.etekisi.repository.UserRepository;
 import com.etekisi.etekisi.security.CurrentUser;
+import com.etekisi.etekisi.security.LoginThrottle;
 import com.etekisi.etekisi.web.ApiException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -34,6 +36,7 @@ public class RegistrationController {
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtTokenService jwt;
     private final CurrentUser currentUser;
+    private final LoginThrottle throttle;
     /** Compared against when the email is unknown, so a miss costs the same as a wrong password. */
     private final String dummyHash;
 
@@ -42,19 +45,22 @@ public class RegistrationController {
                                   StaffUserRepository staffRepository,
                                   BCryptPasswordEncoder passwordEncoder,
                                   JwtTokenService jwt,
-                                  CurrentUser currentUser) {
+                                  CurrentUser currentUser,
+                                  LoginThrottle throttle) {
         this.userRepository = userRepository;
         this.driverRepository = driverRepository;
         this.staffRepository = staffRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwt = jwt;
         this.currentUser = currentUser;
+        this.throttle = throttle;
         this.dummyHash = passwordEncoder.encode("timing-equaliser-not-a-real-password");
     }
 
     @PostMapping("/register/commuter")
     @Transactional
-    public Map<String, Object> registerUser(@Valid @RequestBody RegisterCommuterRequest req) {
+    public Map<String, Object> registerUser(@Valid @RequestBody RegisterCommuterRequest req, HttpServletRequest http) {
+        throttle.checkIp(http.getRemoteAddr());
         if (userRepository.existsByEmailIgnoreCase(req.email())) {
             throw ApiException.conflict("EMAIL_TAKEN", "An account with this email already exists.");
         }
@@ -69,7 +75,8 @@ public class RegistrationController {
 
     @PostMapping("/register/driver")
     @Transactional
-    public Map<String, Object> registerDriver(@Valid @RequestBody RegisterDriverRequest req) {
+    public Map<String, Object> registerDriver(@Valid @RequestBody RegisterDriverRequest req, HttpServletRequest http) {
+        throttle.checkIp(http.getRemoteAddr());
         if (driverRepository.existsByEmailIgnoreCase(req.email())) {
             throw ApiException.conflict("EMAIL_TAKEN", "An account with this email already exists.");
         }
@@ -88,33 +95,41 @@ public class RegistrationController {
      * On success, mints an HS256 JWT carrying {@code sub=userId} and
      * {@code role}. Failure cases return HTTP 401 with a uniform body so
      * callers can't fingerprint which side (email vs. password) was wrong.
+     * Repeated failures lock the account for a while (429), see LoginThrottle.
      */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest creds) {
+    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest creds, HttpServletRequest http) {
         String email = creds.email().trim();
         String password = creds.password();
+        String accountKey = LoginThrottle.accountKey(creds.role().name(), email);
+        throttle.checkIp(http.getRemoteAddr());
+        throttle.checkAccount(accountKey);
 
         switch (creds.role()) {
             case COMMUTER -> {
                 User user = userRepository.findByEmailIgnoreCase(email).orElse(null);
                 if (matches(password, user != null ? user.getPassword() : null)) {
+                    throttle.recordSuccess(accountKey);
                     return ok(user.getId(), Role.COMMUTER);
                 }
             }
             case DRIVER -> {
                 Driver driver = driverRepository.findByEmailIgnoreCase(email).orElse(null);
                 if (matches(password, driver != null ? driver.getPassword() : null)) {
+                    throttle.recordSuccess(accountKey);
                     return ok(driver.getId(), Role.DRIVER);
                 }
             }
             case OPERATOR, ADMIN -> {
                 StaffUser staff = staffRepository.findByEmailIgnoreCase(email).orElse(null);
                 if (matches(password, staff != null ? staff.getPassword() : null)) {
+                    throttle.recordSuccess(accountKey);
                     return ok(staff.getId(), staff.getRole());
                 }
             }
         }
         // No user found or wrong password — same response either way.
+        throttle.recordFailure(accountKey);
         Map<String, Object> failed = new HashMap<>();
         failed.put("status", "FAIL");
         failed.put("message", "Invalid email or password");

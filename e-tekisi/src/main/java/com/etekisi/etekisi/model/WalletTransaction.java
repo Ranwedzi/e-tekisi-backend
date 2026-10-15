@@ -16,7 +16,7 @@ import java.time.Instant;
 @Data
 public class WalletTransaction {
 
-    public enum Type { TOPUP, FARE_DEBIT, FARE_REFUND, TRIP_EARNING, PAYOUT }
+    public enum Type { TOPUP, FARE_DEBIT, FARE_REFUND, TRIP_EARNING, PAYOUT, PAYOUT_REVERSAL }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

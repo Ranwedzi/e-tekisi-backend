@@ -50,11 +50,12 @@ public final class ApiRecords {
     /** Payout as shown back to the driver; bank account and phone are masked. */
     public record PayoutDto(Long id, BigDecimal amount, String method, String bankName,
                             String accountNumberMasked, String accountHolder,
-                            String phoneNumberMasked, String status, String createdAt) {
+                            String phoneNumberMasked, String status, String createdAt,
+                            String processedAt, String rejectionReason) {
         public static PayoutDto from(PayoutRequest p) {
             return new PayoutDto(p.getId(), p.getAmount(), p.getMethod(), p.getBankName(),
                     mask(p.getAccountNumber()), p.getAccountHolder(), mask(p.getPhoneNumber()),
-                    p.getStatus(), p.getCreatedAt() != null ? p.getCreatedAt().toString() : null);
+                    p.getStatus(), str(p.getCreatedAt()), str(p.getProcessedAt()), p.getRejectionReason());
         }
 
         static String mask(String s) {
@@ -63,6 +64,31 @@ public final class ApiRecords {
             if (digits.length() <= 4) return "****";
             return "****" + digits.substring(digits.length() - 4);
         }
+    }
+
+    /**
+     * Payout as shown to operators, who need the full details to pay it.
+     * Only returned by staff-only endpoints.
+     */
+    public record PayoutOpsDto(Long id, Long driverId, String driverName, String driverPhone,
+                               BigDecimal amount, String method, String bankName, String accountNumber,
+                               String accountHolder, String phoneNumber, String status, String createdAt,
+                               String processedAt, Long processedBy, String reference, String rejectionReason) {
+        public static PayoutOpsDto from(PayoutRequest p, com.etekisi.etekisi.model.Driver d) {
+            return new PayoutOpsDto(p.getId(), p.getDriverId(),
+                    d != null ? d.getFullName() : null, d != null ? d.getPhoneNumber() : null,
+                    p.getAmount(), p.getMethod(), p.getBankName(), p.getAccountNumber(), p.getAccountHolder(),
+                    p.getPhoneNumber(), p.getStatus(), str(p.getCreatedAt()), str(p.getProcessedAt()),
+                    p.getProcessedBy(), p.getReference(), p.getRejectionReason());
+        }
+    }
+
+    public record MarkPaidRequest(@NotBlank @Size(max = 100) String reference) {}
+
+    public record RejectPayoutRequest(@NotBlank @Size(max = 300) String reason) {}
+
+    private static String str(Object o) {
+        return o != null ? o.toString() : null;
     }
 
     // ------------------------------------------------------------- messages --
