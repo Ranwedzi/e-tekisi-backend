@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 /** API input uses CreateBookingRequest; API output uses BookingDto. */
 @Entity
@@ -37,6 +38,10 @@ public class Booking {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private BookingStatus status = BookingStatus.PENDING;
+
+    /** While OFFERED: when the driver's fare offer lapses and the booking returns to PENDING. */
+    @Column(name = "offer_expires_at")
+    private Instant offerExpiresAt;
 
     /** Fare plus tip; zero when neither is set. */
     public BigDecimal total() {
