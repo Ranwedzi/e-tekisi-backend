@@ -217,7 +217,7 @@ JSON is the most common source of bugs in this kind of project.
 |---|---|---|---|
 | POST | `/api/auth/register/commuter` | `{fullName, email, phoneNumber, password}` (password ≥ 8) | `{status, userId, role}`; 409 `EMAIL_TAKEN` |
 | POST | `/api/auth/register/driver` | as above + `taxiPlate`, `licenseNumber` (plate is upper-cased, spaces/dashes removed) | `{status, userId, role}`; 409 `EMAIL_TAKEN` |
-| POST | `/api/auth/login` | `{email, password, role}` (role: COMMUTER, DRIVER, OPERATOR, ADMIN) | `{status, userId, role, token, tokenType, expiresInSeconds}` on 200; `{status:"FAIL", message}` on 401 |
+| POST | `/api/auth/login` | `{email, password, role}` (role: COMMUTER, DRIVER, OPERATOR, ADMIN) | `{status, userId, role, token, tokenType, expiresInSeconds}` on 200; `{status:"FAIL", message}` on 401; 429 `TOO_MANY_ATTEMPTS` with `retryAfterSeconds` after 5 wrong passwords (15-minute lock) or more than 20 auth requests a minute from one IP |
 | GET | `/api/auth/commuter/{id}` | — (self) | `CommuterDto` |
 | GET | `/api/auth/driver/{id}` | — (self) | `DriverDto` (`active` is the online flag) |
 | PUT | `/api/auth/driver/{id}/status?active=true\|false` | — (self) | `DriverDto` |
@@ -266,7 +266,15 @@ echoed value on the frontend so support can grep audit rows.
 | GET | `/api/wallet/{userId}` | commuter, self | `{balance, totalTrips}` |
 | POST | `/api/wallet/{userId}/topup?amount=…` | commuter, self | `{balance, totalTrips}`. R10–R2000. 403 `TOPUP_DISABLED` when no payment provider is configured (always the case in prod until a real gateway is added; the sandbox provider is dev only) |
 | GET | `/api/payouts/driver/{driverId}` | driver, self | `List<PayoutDto>` (account number and phone masked) |
-| POST | `/api/payouts/driver/{driverId}/request` | driver, self; body `{amount, method, bankName?, accountNumber?, accountHolder?, phoneNumber?}` | `PayoutDto`; 409 `INSUFFICIENT_FUNDS` with `available` |
+| POST | `/api/payouts/driver/{driverId}/request` | driver, self; body `{amount, method, bankName?, accountNumber?, accountHolder?, phoneNumber?}` | `PayoutDto` (PENDING; the amount leaves the balance now); 409 `INSUFFICIENT_FUNDS` with `available` |
+| GET | `/api/payouts?status=PENDING\|APPROVED\|PAID\|REJECTED` | operator / admin | `List<PayoutOpsDto>` with full bank details (omit `status` for all) |
+| PUT | `/api/payouts/{id}/approve` | operator / admin | PENDING → APPROVED |
+| PUT | `/api/payouts/{id}/paid` | operator / admin; body `{reference}` | APPROVED → PAID |
+| PUT | `/api/payouts/{id}/reject` | operator / admin; body `{reason}` | PENDING/APPROVED → REJECTED; the amount goes back to the driver's balance. 409 `PAYOUT_WRONG_STATUS` for any other move |
+
+Bank account numbers, account holders and payout phone numbers are encrypted
+at rest (AES-GCM, key `DATA_ENCRYPTION_KEY`). Drivers only ever see them
+masked; operators see them in full.
 
 ### 3.4 Notifications, chat, queue, locations
 

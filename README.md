@@ -79,6 +79,11 @@ trip as the commuter, accept it as the driver, complete it, request a payout.
 - The commuter is charged fare + tip when a driver accepts; the driver is
   credited on complete; cancelling an accepted trip refunds the commuter.
 - Every balance change writes a row to `commuter_schema.wallet_transactions`.
+- Drivers **offer** a fare; the commuter is only charged when they accept
+  it. Offers lapse after 2 minutes (`tekisi.booking.offer-ttl-seconds`).
+- Payouts: the amount leaves the driver's balance on request; operators then
+  approve and mark it paid (with the bank reference) or reject it, which
+  refunds the driver. Bank details are encrypted at rest.
 - Limits (config in `application.properties`): fare ≤ R1000, top-up
   R10–R2000, payout R20–R5000.
 
@@ -93,7 +98,8 @@ Everything sensitive comes from environment variables; see
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Postgres connection |
 | `JWT_SIGNING_SECRET` (≥ 32 bytes), `JWT_ISSUER`, `JWT_EXPIRY_MINUTES` | tokens |
 | `CORS_ALLOWED_ORIGINS` | frontend origins, comma-separated |
-| `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD` | first operator account |
+| `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD` | first operator account (signs in at `/login` → "e-Tekisi staff?", lands on `/ops`) |
+| `DATA_ENCRYPTION_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts payout bank details. Required in prod; **back it up**, losing it makes those columns unreadable |
 | `PAYMENTS_SANDBOX_ENABLED` | dev top-ups (false in prod) |
 | `OSM_NOMINATIM_URL`, `OSM_OSRM_URL`, `OSM_OVERPASS_URL` | map services; point at self-hosted instances for production traffic (the public servers allow ~1 request/second, which the app enforces and caches around) |
 

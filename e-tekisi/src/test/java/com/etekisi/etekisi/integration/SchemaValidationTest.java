@@ -1,6 +1,11 @@
 package com.etekisi.etekisi.integration;
 
+import com.etekisi.etekisi.agent.insight.OperationalInsight;
+import com.etekisi.etekisi.agent.insight.OperationalInsightRepository;
 import com.etekisi.etekisi.repository.UserRepository;
+import org.springframework.data.domain.PageRequest;
+
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -44,10 +49,19 @@ class SchemaValidationTest {
     }
 
     @Autowired private UserRepository users;
+    @Autowired private OperationalInsightRepository insights;
 
     @Test
     void entitiesMatchTheMigratedSchema() {
         // Reaching here means Flyway migrated and Hibernate validated every entity.
         assertThat(users.count()).isZero();
+    }
+
+    @Test
+    void insightFilterWorksOnPostgresWithFiltersLeftOut() {
+        // Regression: a "(:param is null or …)" query failed on Postgres when a filter was null.
+        assertThat(insights.findFiltered(null, null, null, null, PageRequest.of(0, 10))).isEmpty();
+        assertThat(insights.findFiltered(OperationalInsight.Severity.CRITICAL, null, null,
+                Instant.now().minusSeconds(60), PageRequest.of(0, 10))).isEmpty();
     }
 }
