@@ -21,7 +21,7 @@ import java.util.Map;
  * Booking endpoints. Who the caller is always comes from the JWT; ids in the
  * path are checked against it. Business rules live in {@link BookingService}.
  *
- * <p>create / accept / complete honor the {@code Idempotency-Key} header —
+ * <p>create / offer / accept-offer / complete honor the {@code Idempotency-Key} header —
  * repeated requests with the same key return the original response without
  * repeating the side effect.
  */
@@ -77,14 +77,32 @@ public class BookingController {
         return bookings.earnings(driverId);
     }
 
-    @PutMapping("/{bookingId}/accept/{driverId}")
-    public BookingDto acceptBooking(@PathVariable Long bookingId,
-                                    @PathVariable Long driverId,
-                                    @RequestParam BigDecimal fare,
-                                    @RequestHeader(value = "Idempotency-Key", required = false) String idemKey) {
-        requireCallingDriver(driverId);
-        return idempotency.execute(idemKey, scope(driverId, "PUT /api/bookings/" + bookingId + "/accept"),
-                BookingDto.class, () -> bookings.accept(bookingId, driverId, fare));
+    /**
+     * The calling driver offers to do the trip for {@code fare}. Nothing is
+     * charged until the commuter accepts (see {@link #acceptOffer}).
+     */
+    @PutMapping("/{bookingId}/offer")
+    public BookingDto offer(@PathVariable Long bookingId,
+                            @RequestParam BigDecimal fare,
+                            @RequestHeader(value = "Idempotency-Key", required = false) String idemKey) {
+        Long driverId = currentUser.requireRole(Role.DRIVER);
+        return idempotency.execute(idemKey, scope(driverId, "PUT /api/bookings/" + bookingId + "/offer"),
+                BookingDto.class, () -> bookings.offer(bookingId, driverId, fare));
+    }
+
+    /** The commuter accepts the driver's offer; the wallet is charged fare + tip now. */
+    @PutMapping("/{bookingId}/accept-offer")
+    public BookingDto acceptOffer(@PathVariable Long bookingId,
+                                  @RequestHeader(value = "Idempotency-Key", required = false) String idemKey) {
+        Long commuterId = currentUser.requireRole(Role.COMMUTER);
+        return idempotency.execute(idemKey, scope(commuterId, "PUT /api/bookings/" + bookingId + "/accept-offer"),
+                BookingDto.class, () -> bookings.acceptOffer(bookingId, commuterId));
+    }
+
+    /** The commuter turns the offer down; the request goes back to other drivers. */
+    @PutMapping("/{bookingId}/decline-offer")
+    public BookingDto declineOffer(@PathVariable Long bookingId) {
+        return bookings.declineOffer(bookingId, currentUser.requireRole(Role.COMMUTER));
     }
 
     @PostMapping("/{bookingId}/decline/{driverId}")

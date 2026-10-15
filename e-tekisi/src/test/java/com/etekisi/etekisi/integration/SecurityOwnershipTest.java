@@ -105,15 +105,18 @@ class SecurityOwnershipTest {
     @Test
     void driversCanOnlyActAsThemselves() throws Exception {
         Booking b = fixtures.pendingBooking(alice.getId());
-        mvc.perform(put("/api/bookings/" + b.getId() + "/accept/" + dave.getId()).param("fare", "20")
-                        .with(as(Role.DRIVER, erin.getId())))
-                .andExpect(status().isForbidden());
         mvc.perform(post("/api/bookings/" + b.getId() + "/decline/" + dave.getId())
                         .with(as(Role.DRIVER, erin.getId())))
                 .andExpect(status().isForbidden());
-        // A commuter can't accept at all.
-        mvc.perform(put("/api/bookings/" + b.getId() + "/accept/" + dave.getId()).param("fare", "20")
+        mvc.perform(put("/api/bookings/" + b.getId() + "/complete/" + dave.getId())
+                        .with(as(Role.DRIVER, erin.getId())))
+                .andExpect(status().isForbidden());
+        // A commuter can't make offers, and a driver can't accept them.
+        mvc.perform(put("/api/bookings/" + b.getId() + "/offer").param("fare", "20")
                         .with(as(Role.COMMUTER, alice.getId())))
+                .andExpect(status().isForbidden());
+        mvc.perform(put("/api/bookings/" + b.getId() + "/accept-offer")
+                        .with(as(Role.DRIVER, dave.getId())))
                 .andExpect(status().isForbidden());
         assertThat(fixtures.status(b.getId())).isEqualTo(BookingStatus.PENDING);
     }

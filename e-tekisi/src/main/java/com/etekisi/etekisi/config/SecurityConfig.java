@@ -97,14 +97,15 @@ public class SecurityConfig {
                         // Driver areas. Controllers additionally check the driver is acting as themselves.
                         .requestMatchers("/api/payouts/**").hasAnyRole("DRIVER", "OPERATOR", "ADMIN")
                         .requestMatchers("/api/bookings/pending",
-                                         "/api/bookings/*/accept/**",
+                                         "/api/bookings/*/offer",
                                          "/api/bookings/*/complete/**",
                                          "/api/bookings/*/decline/**",
                                          "/api/locations/update",
                                          "/api/queue/**")
                             .hasAnyRole("DRIVER", "OPERATOR", "ADMIN")
                         // Commuter areas.
-                        .requestMatchers("/api/wallet/**", "/api/saved-ranks/**", "/api/bookings/create")
+                        .requestMatchers("/api/wallet/**", "/api/saved-ranks/**", "/api/bookings/create",
+                                         "/api/bookings/*/accept-offer", "/api/bookings/*/decline-offer")
                             .hasAnyRole("COMMUTER", "OPERATOR", "ADMIN")
                         // Default: any authenticated principal can hit the rest of /api/**.
                         .requestMatchers("/api/**").authenticated()

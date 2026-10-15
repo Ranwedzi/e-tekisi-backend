@@ -4,10 +4,10 @@
 //   1) commuter login -> JWT
 //   2) POST /api/bookings/create
 //   3) driver login -> JWT
-//   4) PUT /api/bookings/{id}/accept/{driverId}?fare=...
-//      (accept charges the commuter's wallet: top it up first or accepts
-//       return 409 INSUFFICIENT_FUNDS)
-//   5) PUT /api/bookings/{id}/complete/{driverId}
+//   4) PUT /api/bookings/{id}/offer?fare=...        (driver, must be online)
+//   5) PUT /api/bookings/{id}/accept-offer          (commuter; charges the
+//      wallet, so top it up first or this returns 409 INSUFFICIENT_FUNDS)
+//   6) PUT /api/bookings/{id}/complete/{driverId}
 //
 // Three load profiles. Pick via env:
 //   BASELINE  (1x, default): 5 VUs for 2 min
@@ -61,7 +61,6 @@ export default function () {
                                 __ENV.DRIVER_PASSWORD || 'password');
 
     const create = http.post(`${BASE}/api/bookings/create`, JSON.stringify({
-        commuterId: __ENV.COMMUTER_ID || 1,
         pickupLocation: 'Bree St Rank',
         destination: 'Sandton',
     }), {
@@ -75,11 +74,12 @@ export default function () {
     check(create, { 'create 200/201': (r) => r.status >= 200 && r.status < 300 });
 
     sleep(1);
-    // Pretend driver accepts. In a real run this requires the booking ID
-    // returned by create — adapt once the controller returns JSON.
-    const bookingId = __ENV.BOOKING_ID || 1;
-    const accept = http.put(`${BASE}/api/bookings/${bookingId}/accept/${__ENV.DRIVER_ID || 1}?fare=80`,
+    const bookingId = create.json('bookingId');
+    const offer = http.put(`${BASE}/api/bookings/${bookingId}/offer?fare=80`,
         null, { headers: { Authorization: `Bearer ${driverToken}` } });
+    check(offer, { 'offer 200': (r) => r.status === 200 });
+    const accept = http.put(`${BASE}/api/bookings/${bookingId}/accept-offer`,
+        null, { headers: { Authorization: `Bearer ${commuterToken}` } });
     bookingAccept.add(accept.timings.duration);
 
     sleep(2);

@@ -104,9 +104,14 @@ class BookingControllerEventTest {
         long startedBefore = events.stream(TripStartedEvent.class).count();
         long completedBefore = events.stream(TripCompletedEvent.class).count();
 
-        mvc().perform(put("/api/bookings/" + b.getId() + "/accept/" + driver.getId())
+        mvc().perform(put("/api/bookings/" + b.getId() + "/offer")
                         .with(as(Role.DRIVER, driver.getId()))
                         .param("fare", "120.0"))
+                .andExpect(status().isOk());
+        // The trip only starts once the commuter accepts the offer.
+        assertThat(events.stream(TripStartedEvent.class).count()).isEqualTo(startedBefore);
+        mvc().perform(put("/api/bookings/" + b.getId() + "/accept-offer")
+                        .with(as(Role.COMMUTER, commuter.getId())))
                 .andExpect(status().isOk());
 
         assertThat(events.stream(TripStartedEvent.class).count() - startedBefore).isEqualTo(1L);

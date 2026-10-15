@@ -231,20 +231,26 @@ JSON is the most common source of bugs in this kind of project.
 | GET | `/api/bookings/user/{userId}` | commuter, self | `List<BookingDto>` newest first |
 | GET | `/api/bookings/driver/{driverId}` | driver, self | `List<BookingDto>` newest first |
 | GET | `/api/bookings/driver/{driverId}/earnings` | driver, self | `{totalEarnings, tripCount, availableBalance, history}` |
-| PUT | `/api/bookings/{bookingId}/accept/{driverId}?fare=…` | driver, self | `BookingDto` with contact details. 400 `INVALID_AMOUNT` (fare ≤ 0, above the max, more than 2 decimals); 409 `BOOKING_NOT_PENDING`; 409 `INSUFFICIENT_FUNDS` with `required` and `balance` (the booking stays PENDING) |
+| PUT | `/api/bookings/{bookingId}/offer?fare=…` | driver (from token), online | `BookingDto` with status OFFERED and `offerExpiresAt`. Nothing is charged. 400 `INVALID_AMOUNT` (fare ≤ 0, above the max, more than 2 decimals); 409 `BOOKING_NOT_PENDING` (someone else's offer is open); 409 `DRIVER_OFFLINE` |
+| PUT | `/api/bookings/{bookingId}/accept-offer` | the booking's commuter | `BookingDto` (ACCEPTED, with phone numbers). The wallet is charged fare + tip now. 409 `INSUFFICIENT_FUNDS` with `required` and `balance` (the offer stays open, so top up and retry); 409 `OFFER_NOT_AVAILABLE` (expired or withdrawn) |
+| PUT | `/api/bookings/{bookingId}/decline-offer` | the booking's commuter | `BookingDto` back to PENDING for other drivers |
 | POST | `/api/bookings/{bookingId}/decline/{driverId}` | driver, self | `{status:"DECLINED"}` |
 | PUT | `/api/bookings/{bookingId}/complete/{driverId}` | assigned driver | `{status, booking, earned}`; 409 `ALREADY_COMPLETED` |
-| PUT | `/api/bookings/{bookingId}/cancel` | the booking's commuter or assigned driver | `BookingDto`. Cancelling an ACCEPTED trip refunds fare + tip; 409 if already cancelled or completed |
+| PUT | `/api/bookings/{bookingId}/cancel` | the booking's commuter or assigned driver | `BookingDto`. Cancelling an ACCEPTED trip refunds fare + tip; a driver cancelling their open offer just withdraws it (back to PENDING); 409 if already cancelled or completed |
 
-`BookingDto` carries `driverName`, `driverPhone`, `taxiPlate`,
-`commuterName`, `commuterPhone` once the booking is ACCEPTED or COMPLETED
-(null before that).
+**Lifecycle:** PENDING → (driver offers) OFFERED → (commuter accepts) ACCEPTED
+→ COMPLETED. An offer lasts `tekisi.booking.offer-ttl-seconds` (default 120);
+if the commuter declines, the driver withdraws, or it lapses, the booking goes
+back to PENDING.
 
-**Money:** the commuter's wallet is charged fare + tip when the driver
-accepts. The driver is credited on complete. Every movement is a row in
+`BookingDto` carries `driverName`, `taxiPlate` and `commuterName` from OFFERED
+onwards, and `driverPhone` / `commuterPhone` once ACCEPTED (null before that).
+
+**Money:** the commuter's wallet is charged fare + tip only when they accept
+an offer. The driver is credited on complete. Every movement is a row in
 `commuter_schema.wallet_transactions`.
 
-**Idempotency:** `POST /create`, `PUT /accept`, `PUT /complete` and payout
+**Idempotency:** `POST /create`, `PUT /offer`, `PUT /accept-offer`, `PUT /complete` and payout
 requests honour `Idempotency-Key`, scoped per user. Use one UUID per logical
 intent and retry safely. A retry while the first is still running gets 409
 `IDEMPOTENCY_IN_PROGRESS`.

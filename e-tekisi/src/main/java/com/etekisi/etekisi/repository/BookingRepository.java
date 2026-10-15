@@ -25,6 +25,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("select b from Booking b where b.id = :id")
     Optional<Booking> findByIdForUpdate(@Param("id") Long id);
 
+    /** Offers whose time is up; the expiry job returns them to PENDING. */
+    List<Booking> findByStatusAndOfferExpiresAtBefore(BookingStatus status, java.time.Instant cutoff);
+
     /** Pending bookings this driver hasn't declined, newest first. */
     @Query("""
             select b from Booking b

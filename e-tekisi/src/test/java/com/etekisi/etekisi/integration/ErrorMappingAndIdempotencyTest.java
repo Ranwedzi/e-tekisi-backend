@@ -38,7 +38,7 @@ class ErrorMappingAndIdempotencyTest {
     @Test
     void unknownBookingIs404() throws Exception {
         Driver d = fixtures.driver();
-        mvc.perform(put("/api/bookings/999999/accept/" + d.getId()).param("fare", "10")
+        mvc.perform(put("/api/bookings/999999/offer").param("fare", "10")
                         .with(as(Role.DRIVER, d.getId())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"))
@@ -48,7 +48,7 @@ class ErrorMappingAndIdempotencyTest {
     @Test
     void missingParameterIs400() throws Exception {
         Driver d = fixtures.driver();
-        mvc.perform(put("/api/bookings/1/accept/" + d.getId()).with(as(Role.DRIVER, d.getId())))
+        mvc.perform(put("/api/bookings/1/offer").with(as(Role.DRIVER, d.getId())))
                 .andExpect(status().isBadRequest());
     }
 
@@ -116,13 +116,21 @@ class ErrorMappingAndIdempotencyTest {
         Booking bk = fixtures.pendingBooking(u.getId());
         String key = "retry-" + System.nanoTime();
 
+        mvc.perform(put("/api/bookings/" + bk.getId() + "/offer").param("fare", "50")
+                        .with(as(Role.DRIVER, d.getId())))
+                .andExpect(status().isOk());
+
         // First try fails (fare above wallet balance)...
-        mvc.perform(put("/api/bookings/" + bk.getId() + "/accept/" + d.getId()).param("fare", "50")
-                        .header("Idempotency-Key", key).with(as(Role.DRIVER, d.getId())))
+        mvc.perform(put("/api/bookings/" + bk.getId() + "/accept-offer")
+                        .header("Idempotency-Key", key).with(as(Role.COMMUTER, u.getId())))
                 .andExpect(status().isConflict());
-        // ...so the same key can be used again rather than replaying the failure or 409-ing forever.
-        mvc.perform(put("/api/bookings/" + bk.getId() + "/accept/" + d.getId()).param("fare", "10")
-                        .header("Idempotency-Key", key).with(as(Role.DRIVER, d.getId())))
+        // ...the commuter tops up, and the same key can be used again rather
+        // than replaying the failure or 409-ing forever.
+        mvc.perform(post("/api/wallet/" + u.getId() + "/topup").param("amount", "40")
+                        .with(as(Role.COMMUTER, u.getId())))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/bookings/" + bk.getId() + "/accept-offer")
+                        .header("Idempotency-Key", key).with(as(Role.COMMUTER, u.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
     }
