@@ -1,6 +1,37 @@
-# Deploy — Tekisi Backend
+# Deploy — Tekisi
 
-Two supported topologies. Pick one per environment; do not mix.
+## Start here — single server with Caddy
+
+`docker-compose.prod.yml` (repo root) is the supported way to run one
+production server: Caddy terminates HTTPS (automatic Let's Encrypt) and routes
+`/api/*` and `/actuator/health` to the backend and everything else to the
+frontend. Backend, frontend and Postgres are not published on the host.
+
+1. Point `DOMAIN`'s DNS at the server; open ports 80 and 443.
+2. `cp .env.prod.example .env.prod`, fill in every value, `chmod 600 .env.prod`.
+   Store the secrets (especially `DATA_ENCRYPTION_KEY`) in your password
+   manager or vault as well.
+3. `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`
+4. Check `https://$DOMAIN/actuator/health` returns `UP`, then sign in at
+   `https://$DOMAIN/login` with the bootstrap operator ("e-Tekisi staff?").
+
+**Updating:** `git pull` in both repos, then re-run step 3. Flyway migrates
+the database on start; the backend refuses to start if the entities and
+schema disagree. Take a backup first (`docs/BACKUP_RESTORE.md`).
+
+**Keep these volumes:** `tekisi_pgdata` (the database) and `caddy_data`
+(certificates; Let's Encrypt rate-limits re-issuing).
+
+**Not routed publicly:** Swagger UI, OpenAPI docs, `/actuator/prometheus`.
+Reach them through an SSH tunnel, e.g.
+`ssh -L 8080:localhost:8080 server` plus a temporary port mapping, or from
+a monitoring container on the same Docker network.
+
+The two topologies below are for when one server is no longer enough.
+
+---
+
+Two scaled-out topologies. Pick one per environment; do not mix.
 
 ## Topology A — Two Compose stacks behind a manual switch (single VM)
 

@@ -22,7 +22,22 @@ Open `http://localhost:3000`. The backend is on `:8080` (dev profile, so
 sandbox top-ups work) and Postgres on `:5433`, with data kept in
 `./postgres_data`. Stop with `docker compose down`; after code changes,
 run `docker compose up -d --build` again. Production uses
-`e-tekisi/docker-compose.prod.yml`.
+`docker-compose.prod.yml` (see below).
+
+## Production (single server, HTTPS)
+
+`docker-compose.prod.yml` runs Caddy, the frontend, the backend (prod
+profile) and Postgres. Caddy gets a Let's Encrypt certificate for your
+domain and serves the site and the API from the same origin.
+
+```bash
+cp .env.prod.example .env.prod     # fill in every value, then: chmod 600 .env.prod
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+Point the domain's DNS at the server and open ports 80 and 443 first. Only
+Caddy is exposed; Swagger and metrics aren't routed publicly. See
+`docs/DEPLOY.md` for updates, backups and rollback.
 
 ## Run it locally
 
@@ -118,7 +133,7 @@ skipped otherwise.
 ## More docs
 
 - `docs/FRONTEND_INTEGRATION.md` — API contract for the frontend
-- `docs/DEPLOY.md` — production deployment (`e-tekisi/docker-compose.prod.yml`)
+- `docs/DEPLOY.md` — production deployment (`docker-compose.prod.yml` + `deploy/Caddyfile`)
 - `docs/BACKUP_RESTORE.md` — database backups
 
 ## Security notes

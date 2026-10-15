@@ -145,7 +145,7 @@ A vertical slice in this order:
 cd e-tekisi
 ./mvnw spring-boot:run
 # or, for a real container:
-docker compose -f docker-compose.prod.yml up
+docker compose up -d --build          # from the repo root: db + backend + frontend
 ```
 
 Visit `http://localhost:8080/actuator/health` → `{"status":"UP"}`.

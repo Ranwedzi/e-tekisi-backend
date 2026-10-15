@@ -1,0 +1,88 @@
+# e-Tekisi production stack (single VM): Caddy (HTTPS) + frontend + backend + Postgres.
+#
+#   cp .env.prod.example .env.prod      # fill in every value; chmod 600 .env.prod
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Only Caddy publishes ports (80, 443). The backend, frontend and database are
+# reachable only on the internal Docker network. The site and API share one
+# origin (https://$DOMAIN), so the browser never makes cross-origin calls.
+#
+# The frontend is built from its own repo, expected next to this one; set
+# FRONTEND_DIR in .env.prod if it lives elsewhere.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-etekisi}
+      POSTGRES_USER: ${DB_USER:?set DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+    volumes:
+      - tekisi_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME:-etekisi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./e-tekisi
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-etekisi}
+      DB_USERNAME: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SIGNING_SECRET: ${JWT_SIGNING_SECRET:?set JWT_SIGNING_SECRET}
+      JWT_ISSUER: https://${DOMAIN}
+      JWT_EXPIRY_MINUTES: ${JWT_EXPIRY_MINUTES:-60}
+      CORS_ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set DATA_ENCRYPTION_KEY}
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-90}
+      # External routing API for ETAs; the heuristic is used when it's off.
+      ROUTING_API_ENABLED: ${ROUTING_API_ENABLED:-false}
+      ROUTING_API_BASE_URL: ${ROUTING_API_BASE_URL:-}
+      ROUTING_API_KEY: ${ROUTING_API_KEY:-}
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+
+  frontend:
+    build:
+      context: ${FRONTEND_DIR:-../../e-tekisi-frontend-main/e-tekisi-frontend-main}
+      args:
+        NEXT_PUBLIC_API_URL: https://${DOMAIN}
+        NEXT_PUBLIC_MAP_TILE_URL: ${MAP_TILE_URL:-}
+        NEXT_PUBLIC_MAP_ATTRIBUTION: ${MAP_ATTRIBUTION:-}
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # certificates: keep this volume
+      - caddy_config:/config
+
+volumes:
+  tekisi_pgdata:
+  caddy_data:
+  caddy_config:

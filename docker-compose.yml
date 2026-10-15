@@ -6,7 +6,7 @@
 #
 # Then open http://localhost:3000. The backend runs the dev profile, so the
 # sandbox wallet top-up works and no real money moves. For production use
-# e-tekisi/docker-compose.prod.yml instead.
+# docker-compose.prod.yml instead.
 #
 # The frontend is built from its own repo, expected next to this one
 # (../../e-tekisi-frontend-main/e-tekisi-frontend-main); set FRONTEND_DIR in
