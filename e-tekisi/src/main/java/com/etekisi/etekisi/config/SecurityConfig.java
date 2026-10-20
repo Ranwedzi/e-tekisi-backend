@@ -86,6 +86,8 @@ public class SecurityConfig {
                                 "/api/auth/verify-email",
                                 "/api/auth/password/forgot",
                                 "/api/auth/password/reset",
+                                // Second step of staff sign-in; protected by the one-time challenge.
+                                "/api/auth/mfa/**",
                                 "/api/legal",
                                 "/actuator/health",
                                 "/actuator/health/**",

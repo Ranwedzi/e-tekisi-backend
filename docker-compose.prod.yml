@@ -64,6 +64,7 @@ services:
       SMS_PASSWORD: ${SMS_PASSWORD:-}
       SMS_FROM: ${SMS_FROM:-}
       LEGAL_VERSION: ${LEGAL_VERSION:?set LEGAL_VERSION}
+      STAFF_MFA_REQUIRED: ${STAFF_MFA_REQUIRED:-true}
       METRICS_USERNAME: prometheus
       METRICS_PASSWORD: ${METRICS_PASSWORD:?set METRICS_PASSWORD}
       # Pages on-call for CRITICAL safety alerts (panic button). Strongly

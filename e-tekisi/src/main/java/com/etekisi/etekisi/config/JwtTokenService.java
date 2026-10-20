@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Issues short-lived HS256 JWTs for authenticated commuters / drivers /
@@ -49,5 +51,17 @@ public class JwtTokenService {
 
     public long expirySeconds() {
         return expiryMinutes * 60L;
+    }
+
+    /** The body of a successful sign-in, as the frontend expects it. */
+    public Map<String, Object> loginBody(Long userId, String role) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("status", "SUCCESS");
+        body.put("userId", userId);
+        body.put("role", role);
+        body.put("token", mint(userId, role));
+        body.put("tokenType", "Bearer");
+        body.put("expiresInSeconds", expirySeconds());
+        return body;
     }
 }

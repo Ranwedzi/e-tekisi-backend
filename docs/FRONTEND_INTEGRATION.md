@@ -347,6 +347,21 @@ Deletion is refused with `403 PASSWORD_INCORRECT`, or `409` with code
 `BALANCE_NOT_EMPTY` or `PAYOUT_IN_PROGRESS` (driver). Staff accounts can't
 use it.
 
+### 3.4d Staff two-step sign-in (TOTP)
+
+For staff with MFA, `POST /api/auth/login` returns `{status: "MFA_REQUIRED",
+mfaToken}` instead of a token; with `STAFF_MFA_REQUIRED=true` (prod) staff
+without it get `{status: "MFA_SETUP_REQUIRED", mfaToken}`. The challenge
+lasts 5 minutes; wrong codes count towards the account lockout.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/api/auth/mfa/verify` body `{mfaToken, code}` | challenge | code = 6 digits or a recovery code; returns the normal login body |
+| POST | `/api/auth/mfa/setup` body `{mfaToken}` | setup challenge | `{secret, otpauthUrl}` |
+| POST | `/api/auth/mfa/enable` body `{mfaToken, code}` | setup challenge | login body + `recoveryCodes` (shown once) |
+| GET | `/api/me/mfa` | staff | `{enabled, required, recoveryCodesLeft}` |
+| POST | `/api/me/mfa/setup`, `/api/me/mfa/enable` `{code}`, `/api/me/mfa/disable` `{code}` | staff | enabling/disabling signs out every session |
+
 ### 3.5 Operator / agent surface
 
 Locked to `ROLE_OPERATOR` or `ROLE_ADMIN` in `SecurityConfig` (except the

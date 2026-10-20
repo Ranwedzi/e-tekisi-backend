@@ -7,4 +7,6 @@ import java.util.Optional;
 
 public interface StaffUserRepository extends JpaRepository<StaffUser, Long> {
     Optional<StaffUser> findByEmailIgnoreCase(String email);
+
+    Optional<StaffState> findStateById(Long id);
 }
