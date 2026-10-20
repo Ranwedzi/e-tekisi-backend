@@ -168,6 +168,9 @@ public class BookingService {
             throw ApiException.conflict("BOOKING_NOT_PENDING", "This booking is no longer available.");
         }
         Driver driver = drivers.findById(driverId).orElseThrow(() -> ApiException.notFound("Driver"));
+        if (!driver.isApproved()) {
+            throw ApiException.conflict("DRIVER_NOT_APPROVED", "Your driver account must be approved before you can send offers.");
+        }
         if (!driver.isActive()) {
             throw ApiException.conflict("DRIVER_OFFLINE", "Go online to send fare offers.");
         }

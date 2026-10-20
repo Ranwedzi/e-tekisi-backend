@@ -216,11 +216,11 @@ JSON is the most common source of bugs in this kind of project.
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | POST | `/api/auth/register/commuter` | `{fullName, email, phoneNumber, password}` (password ≥ 8) | `{status, userId, role}`; 409 `EMAIL_TAKEN` |
-| POST | `/api/auth/register/driver` | as above + `taxiPlate`, `licenseNumber` (plate is upper-cased, spaces/dashes removed) | `{status, userId, role}`; 409 `EMAIL_TAKEN` |
+| POST | `/api/auth/register/driver` | as above + `taxiPlate`, `licenseNumber` (plate is upper-cased, spaces/dashes removed) | `{status, userId, role, approvalStatus:"PENDING_APPROVAL"}`; 409 `EMAIL_TAKEN`. The driver can't go online, offer or queue until an operator approves them |
 | POST | `/api/auth/login` | `{email, password, role}` (role: COMMUTER, DRIVER, OPERATOR, ADMIN) | `{status, userId, role, token, tokenType, expiresInSeconds}` on 200; `{status:"FAIL", message}` on 401; 429 `TOO_MANY_ATTEMPTS` with `retryAfterSeconds` after 5 wrong passwords (15-minute lock) or more than 20 auth requests a minute from one IP |
 | GET | `/api/auth/commuter/{id}` | — (self) | `CommuterDto` |
 | GET | `/api/auth/driver/{id}` | — (self) | `DriverDto` (`active` is the online flag) |
-| PUT | `/api/auth/driver/{id}/status?active=true\|false` | — (self) | `DriverDto` |
+| PUT | `/api/auth/driver/{id}/status?active=true\|false` | — (self) | `DriverDto`. Going online needs an approved account: 409 `DRIVER_NOT_APPROVED` otherwise |
 
 ### 3.2 Bookings (commuter + driver)
 
@@ -303,6 +303,9 @@ panic button above). Create the first operator with
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/api/insights?severity=&code=&bookingId=&since=&page=&size=` | `{items, page, size, totalElements, totalPages}` |
+| GET | `/api/ops/drivers?status=PENDING_APPROVAL\|APPROVED\|REJECTED` | drivers to review, oldest sign-ups first |
+| PUT | `/api/ops/drivers/{id}/approve` | approve a driver (they're notified) |
+| PUT | `/api/ops/drivers/{id}/reject` body `{reason}` | reject or suspend; also takes them offline; the driver sees the reason |
 | POST | `/api/agents/dispatch` | `DispatchDecision` |
 | POST | `/api/agents/dispatch/auto` | `{decision, autonomous, recommendationStatus, …}`. When it acts, it *offers* the trip to the recommended driver by notification; it never accepts on their behalf |
 | GET | `/api/agents/hotspots` | `HotspotRecommendation` |

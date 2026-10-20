@@ -23,7 +23,9 @@ public record DriverDto(
         String licenseNumber,
         BigDecimal balance,
         Integer tripsCompleted,
-        boolean active
+        boolean active,
+        String approvalStatus,
+        String approvalNote
 ) {
     public static DriverDto from(Driver d) {
         if (d == null) return null;
@@ -36,7 +38,9 @@ public record DriverDto(
                 d.getLicenseNumber(),
                 d.getBalance(),
                 d.getTripsCompleted(),
-                d.isActive()
+                d.isActive(),
+                d.getApprovalStatus() != null ? d.getApprovalStatus().name() : null,
+                d.getApprovalNote()
         );
     }
 }

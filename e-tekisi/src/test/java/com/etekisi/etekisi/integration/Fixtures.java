@@ -57,6 +57,7 @@ public class Fixtures {
         d.setLicenseNumber("L1");
         d.setTaxiPlate("ABC123GP");
         d.setPassword("x");
+        d.setApprovalStatus(DriverApproval.APPROVED); // vetted
         d.setActive(true); // online, so they can send offers
         return drivers.save(d);
     }
