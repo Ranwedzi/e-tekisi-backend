@@ -10,5 +10,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmailIgnoreCase(String email);
 
-    boolean existsByIdAndDeletedAtIsNotNull(Long id);
+    /** Deleted / password-changed state, for the token validator. */
+    Optional<AccountState> findStateById(Long id);
 }

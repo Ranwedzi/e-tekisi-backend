@@ -25,7 +25,9 @@ public record DriverDto(
         Integer tripsCompleted,
         boolean active,
         String approvalStatus,
-        String approvalNote
+        String approvalNote,
+        boolean emailVerified,
+        boolean phoneVerified
 ) {
     public static DriverDto from(Driver d) {
         if (d == null) return null;
@@ -40,7 +42,9 @@ public record DriverDto(
                 d.getTripsCompleted(),
                 d.isActive(),
                 d.getApprovalStatus() != null ? d.getApprovalStatus().name() : null,
-                d.getApprovalNote()
+                d.getApprovalNote(),
+                d.getEmailVerifiedAt() != null,
+                d.getPhoneVerifiedAt() != null
         );
     }
 }

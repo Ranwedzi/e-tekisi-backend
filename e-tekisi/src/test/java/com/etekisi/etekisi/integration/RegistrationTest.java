@@ -43,7 +43,7 @@ class RegistrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"id":%d,"fullName":"Mallory","email":"%s",
-                                 "phoneNumber":"0710000001","password":"password123"}"""
+                                 "phoneNumber":"0710000001","password":"kettle-sunrise-42","acceptTerms":true,"termsVersion":"test-terms-v1"}"""
                                 .formatted(victim.getId(), attackerEmail)))
                 .andExpect(status().isOk());
 
@@ -61,7 +61,7 @@ class RegistrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"fullName":"Sipho","email":"%s","phoneNumber":"0820000001",
-                                 "taxiPlate":"gp 123-abc","licenseNumber":"LIC-9","password":"password123",
+                                 "taxiPlate":"gp 123-abc","licenseNumber":"LIC-9","password":"kettle-sunrise-42","acceptTerms":true,"termsVersion":"test-terms-v1",
                                  "balance":100000,"tripsCompleted":999,"active":true}"""
                                 .formatted(email)))
                 .andExpect(status().isOk())
@@ -81,7 +81,7 @@ class RegistrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"fullName":"Sipho","email":"x%d@test.dev","phoneNumber":"0820000001",
-                                 "taxiPlate":"GP123","password":"password123"}""".formatted(System.nanoTime())))
+                                 "taxiPlate":"GP123","password":"kettle-sunrise-42","acceptTerms":true,"termsVersion":"test-terms-v1"}""".formatted(System.nanoTime())))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.licenseNumber").exists());
     }
@@ -92,7 +92,7 @@ class RegistrationTest {
         mvc.perform(post("/api/auth/register/commuter")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"fullName":"Copy","email":"%s","phoneNumber":"0710000001","password":"password123"}"""
+                                {"fullName":"Copy","email":"%s","phoneNumber":"0710000001","password":"kettle-sunrise-42","acceptTerms":true,"termsVersion":"test-terms-v1"}"""
                                 .formatted(existing.getEmail().toUpperCase())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("EMAIL_TAKEN"));
@@ -104,14 +104,14 @@ class RegistrationTest {
         mvc.perform(post("/api/auth/register/commuter")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"fullName":"Lindi","email":"%s","phoneNumber":"0710000001","password":"password123"}"""
+                                {"fullName":"Lindi","email":"%s","phoneNumber":"0710000001","password":"kettle-sunrise-42","acceptTerms":true,"termsVersion":"test-terms-v1"}"""
                                 .formatted(email)))
                 .andExpect(status().isOk());
 
         String body = mvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email":"%s","password":"password123","role":"COMMUTER"}""".formatted(email.toUpperCase())))
+                                {"email":"%s","password":"kettle-sunrise-42","role":"COMMUTER"}""".formatted(email.toUpperCase())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andReturn().getResponse().getContentAsString();

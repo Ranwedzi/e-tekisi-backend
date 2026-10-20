@@ -118,6 +118,10 @@ Everything sensitive comes from environment variables; see
 | `DATA_ENCRYPTION_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts payout bank details. Required in prod; **back it up**, losing it makes those columns unreadable |
 | `PAYMENTS_SANDBOX_ENABLED` | dev top-ups (false in prod) |
 | `RETENTION_TRIP_GPS_DAYS` (90), `RETENTION_DRIVER_LOCATION_DAYS` (7), `RETENTION_MESSAGES_DAYS` (180), `RETENTION_NOTIFICATIONS_DAYS` (90), `AUDIT_RETENTION_DAYS` (90) | how long personal data is kept; a daily job at 03:30 deletes older rows, 0 turns one off. GPS of trips with a CRITICAL safety alert is kept |
+| `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`, `MAIL_FROM` | SMTP for verification and password-reset emails (required in prod; dev uses Mailpit at http://localhost:8025) |
+| `SMS_PROVIDER` (`none`, `log`, `bulksms`, `clickatell`, `twilio`, `generic`), `SMS_URL`, `SMS_USERNAME`, `SMS_PASSWORD`, `SMS_FROM` | SMS codes for phone verification and reset (optional) |
+| `PUBLIC_URL`, `LEGAL_VERSION` | frontend address used in email links; version of the terms people accept (bump it when the documents change) |
+| `LOGIN_IP_REQUESTS_PER_MINUTE` (60) | per-IP limit on sign-in/sign-up/reset; account lockout after 5 wrong passwords is separate |
 | `SAFETY_ALERT_WEBHOOK`, `SAFETY_ALERT_WEBHOOK_FORMAT`, `SAFETY_ALERT_WEBHOOK_SECRET` | pages on-call for panic-button alerts (generic JSON or PagerDuty) |
 | `METRICS_USERNAME`, `METRICS_PASSWORD` | HTTP Basic for the Prometheus scraper on `/actuator/prometheus` |
 | `OSM_NOMINATIM_URL`, `OSM_OSRM_URL`, `OSM_OVERPASS_URL` | map services; point at self-hosted instances for production traffic (the public servers allow ~1 request/second, which the app enforces and caches around) |

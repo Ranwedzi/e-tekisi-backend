@@ -51,6 +51,7 @@ public class QueueController {
         if (existing.isPresent()) return existing.get();
 
         Driver driver = driverRepository.findById(driverId).orElseThrow(() -> ApiException.notFound("Driver"));
+        com.etekisi.etekisi.service.AccountSecurityService.requireVerified(driver);
         if (!driver.isApproved()) {
             throw ApiException.conflict("DRIVER_NOT_APPROVED", "Your driver account must be approved before you can join a queue.");
         }

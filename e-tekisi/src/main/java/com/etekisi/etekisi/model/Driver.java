@@ -10,7 +10,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "drivers", schema = "driver_schema")
 @Data
-public class Driver {
+public class Driver implements AccountHolder {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -64,6 +64,22 @@ public class Driver {
     /** Set when the account is deleted; personal fields are anonymised at the same time. */
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
+    @Column(name = "phone_verified_at")
+    private Instant phoneVerifiedAt;
+
+    /** Version of the terms and privacy policy the person accepted, and when. */
+    @Column(name = "terms_version", length = 40)
+    private String termsVersion;
+
+    @Column(name = "terms_accepted_at")
+    private Instant termsAcceptedAt;
+
+    @Column(name = "credentials_changed_at")
+    private Instant credentialsChangedAt;
 
     public boolean isApproved() {
         return approvalStatus == DriverApproval.APPROVED;

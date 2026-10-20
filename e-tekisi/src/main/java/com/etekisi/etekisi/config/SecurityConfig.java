@@ -1,6 +1,6 @@
 package com.etekisi.etekisi.config;
 
-import com.etekisi.etekisi.security.DeletedAccountTokenValidator;
+import com.etekisi.etekisi.security.AccountStateTokenValidator;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -82,6 +82,11 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/register/**",
+                                // Account recovery and consent: reached from an email/SMS, before signing in.
+                                "/api/auth/verify-email",
+                                "/api/auth/password/forgot",
+                                "/api/auth/password/reset",
+                                "/api/legal",
                                 "/actuator/health",
                                 "/actuator/health/**",
                                 "/actuator/info",
@@ -150,12 +155,12 @@ public class SecurityConfig {
     // ---------------------------------------------------------------- JWT --
 
     @Bean
-    public JwtDecoder jwtDecoder(DeletedAccountTokenValidator deletedAccounts) {
+    public JwtDecoder jwtDecoder(AccountStateTokenValidator accountState) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder
                 .withSecretKey(secretKey())
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefault(), deletedAccounts));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefault(), accountState));
         return decoder;
     }
 

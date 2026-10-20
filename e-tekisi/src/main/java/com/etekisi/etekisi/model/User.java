@@ -3,11 +3,13 @@ package com.etekisi.etekisi.model;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.time.Instant;
+
 /** A commuter account. API input uses RegisterCommuterRequest; API output uses CommuterDto. */
 @Entity
 @Table(name = "users", schema = "commuter_schema")
 @Data
-public class User {
+public class User implements AccountHolder {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -27,5 +29,21 @@ public class User {
 
     /** Set when the account is deleted; personal fields are anonymised at the same time. */
     @Column(name = "deleted_at")
-    private java.time.Instant deletedAt;
+    private Instant deletedAt;
+
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
+    @Column(name = "phone_verified_at")
+    private Instant phoneVerifiedAt;
+
+    /** Version of the terms and privacy policy the person accepted, and when. */
+    @Column(name = "terms_version", length = 40)
+    private String termsVersion;
+
+    @Column(name = "terms_accepted_at")
+    private Instant termsAcceptedAt;
+
+    @Column(name = "credentials_changed_at")
+    private Instant credentialsChangedAt;
 }

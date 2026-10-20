@@ -1,4 +1,4 @@
-# Local stack: Postgres + backend + frontend.
+# Local stack: Postgres + backend + frontend, and Mailpit for account emails.
 #
 #   cp .env.example .env
 #   docker compose up -d --build        # everything
@@ -47,8 +47,24 @@ services:
       CORS_ALLOWED_ORIGINS: http://localhost:3000
       ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      # Account emails go to Mailpit: read them at http://localhost:8025.
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: "1025"
+      PUBLIC_URL: http://localhost:3000
+      # SMS codes are written to the backend log (docker compose logs backend).
+      SMS_PROVIDER: log
+      # The e2e suite signs up many accounts from one IP.
+      LOGIN_IP_REQUESTS_PER_MINUTE: "1000"
     ports:
       - "8080:8080"
+    restart: unless-stopped
+
+  # Catches every email the backend sends; web inbox at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.20
+    container_name: etekisi_mailpit
+    ports:
+      - "8025:8025"
     restart: unless-stopped
 
   frontend:

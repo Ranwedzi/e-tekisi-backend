@@ -2,7 +2,9 @@ package com.etekisi.etekisi.controller;
 
 import com.etekisi.etekisi.dto.api.ApiRecords.WalletDto;
 import com.etekisi.etekisi.model.Role;
+import com.etekisi.etekisi.repository.UserRepository;
 import com.etekisi.etekisi.security.CurrentUser;
+import com.etekisi.etekisi.service.AccountSecurityService;
 import com.etekisi.etekisi.service.WalletService;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,10 +20,12 @@ public class WalletController {
 
     private final WalletService wallets;
     private final CurrentUser currentUser;
+    private final UserRepository users;
 
-    public WalletController(WalletService wallets, CurrentUser currentUser) {
+    public WalletController(WalletService wallets, CurrentUser currentUser, UserRepository users) {
         this.wallets = wallets;
         this.currentUser = currentUser;
+        this.users = users;
     }
 
     @GetMapping("/{userId}")
@@ -34,6 +38,7 @@ public class WalletController {
     @PostMapping("/{userId}/topup")
     public WalletDto topUp(@PathVariable Long userId, @RequestParam BigDecimal amount) {
         currentUser.requireSelf(userId, Role.COMMUTER);
+        users.findById(userId).ifPresent(AccountSecurityService::requireVerified);
         return wallets.topUp(userId, amount);
     }
 }
