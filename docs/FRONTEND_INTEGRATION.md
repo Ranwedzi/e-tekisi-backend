@@ -293,6 +293,18 @@ masked; operators see them in full.
 | GET | `/api/locations/nearby?lat=&lng=&radius=` | any | online drivers within `radius` m of the caller (default 5000, max 10000), as `{lat, lng}` rounded to ~110 m, no driver ids |
 | POST | `/api/agents/safety/panic?bookingId=…` | booking participant or staff | `SafetyAlert` |
 
+### 3.4a Your account (POPIA)
+
+| Method | Path | Auth | Returns |
+|---|---|---|---|
+| GET | `/api/me/export` | commuter or driver | everything held about the caller as one JSON document (profile, trips, ledger, messages they sent, notifications; plus wallet and saved places for commuters, payouts with full bank details, last location and queue tickets for drivers). Sent with `Content-Disposition: attachment` |
+| POST | `/api/me/delete` | commuter or driver; body `{password}` | `{status: "DELETED"}`. Anonymises the account (name, email, phone, plate, licence), redacts chat they wrote, deletes notifications, saved places, queue tickets and location, and cancels PENDING requests. Trips and ledger rows are kept, de-identified. The caller's tokens stop working at once |
+
+Deletion is refused with `403 PASSWORD_INCORRECT`, or `409` with code
+`OPEN_TRIP` (an OFFERED/ACCEPTED trip), `WALLET_NOT_EMPTY` (commuter),
+`BALANCE_NOT_EMPTY` or `PAYOUT_IN_PROGRESS` (driver). Staff accounts can't
+use it.
+
 ### 3.5 Operator / agent surface
 
 Locked to `ROLE_OPERATOR` or `ROLE_ADMIN` in `SecurityConfig` (except the

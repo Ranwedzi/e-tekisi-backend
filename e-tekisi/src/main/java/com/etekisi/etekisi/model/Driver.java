@@ -61,6 +61,10 @@ public class Driver {
     @Column(name = "registered_at", nullable = false)
     private Instant registeredAt = Instant.now();
 
+    /** Set when the account is deleted; personal fields are anonymised at the same time. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     public boolean isApproved() {
         return approvalStatus == DriverApproval.APPROVED;
     }

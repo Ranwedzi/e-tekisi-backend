@@ -6,4 +6,6 @@ import java.util.List;
 
 public interface SavedRankRepository extends JpaRepository<SavedRank, Long> {
     List<SavedRank> findByCommuterIdOrderByCreatedAtDesc(Long commuterId);
+
+    long deleteByCommuterId(Long commuterId);
 }

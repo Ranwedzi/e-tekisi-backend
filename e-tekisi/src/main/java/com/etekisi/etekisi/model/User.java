@@ -24,4 +24,8 @@ public class User {
     /** BCrypt hash. */
     @Column(nullable = false, length = 200)
     private String password;
+
+    /** Set when the account is deleted; personal fields are anonymised at the same time. */
+    @Column(name = "deleted_at")
+    private java.time.Instant deletedAt;
 }

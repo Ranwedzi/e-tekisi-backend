@@ -18,4 +18,8 @@ public interface QueueRepository extends JpaRepository<QueueTicket, Long> {
     Optional<QueueTicket> findFirstByDriverIdAndStatusIn(Long driverId, Collection<String> statuses);
 
     long countByTaxiRankAndStatus(String taxiRank, String status);
+
+    List<QueueTicket> findByDriverIdOrderByJoinedAtDesc(Long driverId);
+
+    long deleteByDriverId(Long driverId);
 }
