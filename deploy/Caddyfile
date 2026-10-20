@@ -16,7 +16,9 @@
 }
 
 {$DOMAIN} {
-	encode zstd gzip
+	# Not the live-event stream: compression would hold events back.
+	@compress not path /api/events
+	encode @compress zstd gzip
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

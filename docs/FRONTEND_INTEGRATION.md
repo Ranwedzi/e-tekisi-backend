@@ -276,6 +276,19 @@ Bank account numbers, account holders and payout phone numbers are encrypted
 at rest (AES-GCM, key `DATA_ENCRYPTION_KEY`). Drivers only ever see them
 masked; operators see them in full.
 
+### 3.2a Live updates
+
+`GET /api/events` (any signed-in user, `text/event-stream`) streams
+`change` events whose data is only a topic: `bookings`, `pending` (open
+requests, drivers), `notifications`, `messages:{bookingId}`, `queue`,
+`payouts`, `documents`, and for staff `alerts`, `drivers`, `payouts`,
+`bookings`. Refetch what you show when its topic arrives; keep a slow poll as
+a fallback. Read it with `fetch` (EventSource can't send the Authorization
+header). There's a `ready` event on connect and a comment every 25 s; the
+stream closes after 30 minutes, so reconnect. Events are sent after the
+change commits. The frontend's `useLivePolling` in `app/lib/live.ts` does all
+of this.
+
 ### 3.3a Money limits and risk holds
 
 Top-ups and payouts are refused with `409 LIMIT_REACHED` (and `limit`,

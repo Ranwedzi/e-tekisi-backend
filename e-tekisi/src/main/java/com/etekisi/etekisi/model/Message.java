@@ -6,6 +6,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Entity
+@EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Messages.class)
 @Table(name = "messages", schema = "commuter_schema")
 @Data
 public class Message {

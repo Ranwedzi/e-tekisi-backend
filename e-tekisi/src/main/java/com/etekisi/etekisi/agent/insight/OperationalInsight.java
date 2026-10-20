@@ -16,6 +16,7 @@ import java.time.Instant;
  *   - {@code message} is &lt;=512 chars, populated only from trusted facts.
  */
 @Entity
+@EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Insights.class)
 @Table(
     name = "operational_insights",
     schema = "agent_schema",
