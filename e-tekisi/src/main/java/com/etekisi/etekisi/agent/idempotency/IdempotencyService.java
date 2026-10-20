@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -150,6 +151,7 @@ public class IdempotencyService {
                 "A request with this Idempotency-Key is still being processed. Retry shortly.");
     }
 
+    @SchedulerLock(name = "idempotency-purge", lockAtMostFor = "PT30M")
     @Scheduled(cron = "${tekisi.agent.idempotency.purge-cron:0 30 3 * * *}")
     public void purgeExpired() {
         try {

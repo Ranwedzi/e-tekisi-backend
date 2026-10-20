@@ -1,5 +1,6 @@
 package com.etekisi.etekisi.service;
 
+import com.etekisi.etekisi.cluster.SharedState;
 import com.etekisi.etekisi.model.StaffUser;
 import com.etekisi.etekisi.repository.StaffUserRepository;
 import com.etekisi.etekisi.security.FieldEncryptor;
@@ -10,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,7 +21,6 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Two-factor sign-in for operators and admins (TOTP authenticator app).
@@ -32,8 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code tekisi.security.staff-mfa-required=true} (the prod default) staff
  * without MFA are walked through setting it up first.
  *
- * <p>Challenges live in memory for 5 minutes and allow 5 tries; like the
- * login throttle, several backend instances would need a shared store.
+ * <p>Challenges last 5 minutes and allow 5 tries. They are kept in
+ * {@link SharedState} (Redis when several instances run), so the code step can
+ * land on a different instance from the password step.
  */
 @Service
 public class StaffMfaService {
@@ -49,17 +49,18 @@ public class StaffMfaService {
     private static final String RECOVERY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 
     private final SecureRandom random = new SecureRandom();
-    private final Map<String, Challenge> challenges = new ConcurrentHashMap<>();
+    private final SharedState challenges;
     private final StaffUserRepository staff;
     private final FieldEncryptor encryptor;
     private final boolean required;
     private final LoginThrottle throttle;
 
-    public StaffMfaService(StaffUserRepository staff, FieldEncryptor encryptor, LoginThrottle throttle,
+    public StaffMfaService(StaffUserRepository staff, FieldEncryptor encryptor, LoginThrottle throttle, SharedState challenges,
                            @Value("${tekisi.security.staff-mfa-required:false}") boolean required) {
         this.staff = staff;
         this.encryptor = encryptor;
         this.throttle = throttle;
+        this.challenges = challenges;
         this.required = required;
     }
 
@@ -93,7 +94,7 @@ public class StaffMfaService {
             throttle.recordFailure(key);
             fail(token, c);
         }
-        challenges.remove(token);
+        challenges.delete(key(token));
         throttle.recordSuccess(key);
         log.info("staff.mfa.login_ok staffId={}", s.getId());
         return s;
@@ -125,7 +126,7 @@ public class StaffMfaService {
         Challenge c = use(token, Purpose.SETUP);
         try {
             List<String> codes = enable(c.staffId(), code);
-            challenges.remove(token);
+            challenges.delete(key(token));
             return Map.entry(load(c.staffId()), codes);
         } catch (ApiException e) {
             if ("INVALID_MFA_CODE".equals(e.getCode())) fail(token, c);
@@ -210,14 +211,14 @@ public class StaffMfaService {
         byte[] b = new byte[32];
         random.nextBytes(b);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(b);
-        challenges.put(token, new Challenge(staffId, purpose, Instant.now().plus(CHALLENGE_TTL), 0));
+        challenges.put(key(token), encode(new Challenge(staffId, purpose, Instant.now().plus(CHALLENGE_TTL), 0)), CHALLENGE_TTL);
         return token;
     }
 
     private Challenge use(String token, Purpose purpose) {
-        Challenge c = token == null ? null : challenges.get(token);
+        Challenge c = token == null || token.isBlank() ? null : challenges.get(key(token)).map(StaffMfaService::decode).orElse(null);
         if (c == null || c.purpose() != purpose || c.expiresAt().isBefore(Instant.now())) {
-            if (token != null) challenges.remove(token);
+            if (token != null && !token.isBlank()) challenges.delete(key(token));
             throw invalidChallenge();
         }
         return c;
@@ -225,12 +226,15 @@ public class StaffMfaService {
 
     private void fail(String token, Challenge c) {
         if (c.attempts() + 1 >= MAX_ATTEMPTS) {
-            challenges.remove(token);
+            challenges.delete(key(token));
             log.warn("staff.mfa.too_many_attempts staffId={}", c.staffId());
             throw new ApiException(HttpStatus.UNAUTHORIZED, "MFA_CHALLENGE_EXPIRED",
                     "Too many wrong codes. Sign in again.", null);
         }
-        challenges.put(token, new Challenge(c.staffId(), c.purpose(), c.expiresAt(), c.attempts() + 1));
+        Duration left = Duration.between(Instant.now(), c.expiresAt());
+        if (!left.isNegative() && !left.isZero()) {
+            challenges.put(key(token), encode(new Challenge(c.staffId(), c.purpose(), c.expiresAt(), c.attempts() + 1)), left);
+        }
         throw invalidCode();
     }
 
@@ -251,6 +255,20 @@ public class StaffMfaService {
         return new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_MFA_CODE", "That code isn't right. Check the time on your phone and try again.", null);
     }
 
+    private static String key(String token) {
+        return "mfa:challenge:" + token;
+    }
+
+    private static String encode(Challenge c) {
+        return c.staffId() + "|" + c.purpose() + "|" + c.expiresAt().toEpochMilli() + "|" + c.attempts();
+    }
+
+    private static Challenge decode(String v) {
+        String[] p = v.split("\\|");
+        return new Challenge(Long.valueOf(p[0]), Purpose.valueOf(p[1]), Instant.ofEpochMilli(Long.parseLong(p[2])),
+                Integer.parseInt(p[3]));
+    }
+
     private static ApiException invalidChallenge() {
         return new ApiException(HttpStatus.UNAUTHORIZED, "MFA_CHALLENGE_EXPIRED", "That sign-in has expired. Sign in again.", null);
     }
@@ -264,9 +282,4 @@ public class StaffMfaService {
         }
     }
 
-    @Scheduled(fixedDelay = 60_000)
-    void evictExpired() {
-        Instant now = Instant.now();
-        challenges.entrySet().removeIf(e -> e.getValue().expiresAt().isBefore(now));
-    }
 }

@@ -6,6 +6,7 @@ import com.etekisi.etekisi.web.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -140,6 +141,7 @@ public class TripShareService {
         }
     }
 
+    @SchedulerLock(name = "trip-share-purge", lockAtMostFor = "PT30M")
     @Scheduled(cron = "${tekisi.trip-share.purge-cron:0 50 3 * * *}")
     @Transactional
     public void purgeExpired() {

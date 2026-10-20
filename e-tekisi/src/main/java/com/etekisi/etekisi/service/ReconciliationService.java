@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -103,6 +104,7 @@ public class ReconciliationService {
         }
     }
 
+    @SchedulerLock(name = "reconciliation", lockAtMostFor = "PT2H")
     @Scheduled(cron = "${tekisi.reconciliation.cron:0 30 4 * * *}", zone = "Africa/Johannesburg")
     public void scheduled() {
         try {
@@ -169,6 +171,7 @@ public class ReconciliationService {
         return runs.findTop30ByOrderByIdDesc();
     }
 
+    @SchedulerLock(name = "reconciliation-purge", lockAtMostFor = "PT30M")
     @Scheduled(cron = "${tekisi.reconciliation.purge-cron:0 40 4 * * *}")
     public void purgeOld() {
         Instant cutoff = Instant.now().minus(Duration.ofDays(400)); // financial year plus a margin

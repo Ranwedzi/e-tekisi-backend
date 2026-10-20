@@ -7,6 +7,7 @@ import com.etekisi.etekisi.model.QueueTicket;
 import com.etekisi.etekisi.model.TaxiRank;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -42,6 +43,7 @@ public class DemandPulseAggregator {
         this.trusted = trusted;
     }
 
+    @SchedulerLock(name = "demand-pulse", lockAtMostFor = "PT50S", lockAtLeastFor = "PT30S")
     @Scheduled(fixedRateString = "${tekisi.agent.hotspot.pulse-interval-ms:60000}",
                initialDelayString = "${tekisi.agent.hotspot.pulse-initial-delay-ms:30000}")
     public void aggregate() {
@@ -79,6 +81,7 @@ public class DemandPulseAggregator {
         }
     }
 
+    @SchedulerLock(name = "demand-pulse-purge", lockAtMostFor = "PT30M")
     @Scheduled(cron = "${tekisi.agent.hotspot.pulse-purge-cron:0 45 3 * * *}")
     public void purge() {
         try {

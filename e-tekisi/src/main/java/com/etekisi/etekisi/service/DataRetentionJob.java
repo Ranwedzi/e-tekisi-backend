@@ -7,6 +7,7 @@ import com.etekisi.etekisi.repository.NotificationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -58,6 +59,7 @@ public class DataRetentionJob {
         this.notificationDays = notificationDays;
     }
 
+    @SchedulerLock(name = "data-retention", lockAtMostFor = "PT1H")
     @Scheduled(cron = "${tekisi.retention.cron:0 30 3 * * *}")
     public void purge() {
         purge("trip-gps", gpsDays, cutoff -> gpsPings.deleteOlderThanExceptFlagged(cutoff));

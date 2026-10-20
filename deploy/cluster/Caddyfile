@@ -1,0 +1,17 @@
+# Load balancer for docker-compose.cluster.yml: round-robin over both
+# backends, skipping one that fails its health check. Plain HTTP on :8080
+# (local rehearsal only). The response header X-Backend says which instance
+# answered.
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	reverse_proxy backend-a:8080 backend-b:8080 {
+		lb_policy round_robin
+		health_uri /actuator/health
+		health_interval 5s
+		header_down X-Backend {upstream_hostport}
+	}
+}

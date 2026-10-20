@@ -62,7 +62,13 @@ public class StaffBootstrap implements ApplicationRunner {
         u.setFullName(name);
         u.setPassword(encoder.encode(password));
         u.setRole(r);
-        staff.save(u);
+        try {
+            staff.save(u);
+        } catch (org.springframework.dao.DataIntegrityViolationException alreadyThere) {
+            // Several instances starting together: another one created it first.
+            log.info("staff.bootstrap.exists email={} (created by another instance)", u.getEmail());
+            return;
+        }
         log.info("staff.bootstrap.created email={} role={}", u.getEmail(), r);
     }
 }

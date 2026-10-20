@@ -1,5 +1,6 @@
 package com.etekisi.etekisi.service;
 
+import com.etekisi.etekisi.cluster.SharedState;
 import com.etekisi.etekisi.web.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *       trip every 5 s of polling) don't hit the upstream at all.</li>
  * </ul>
  *
+ * With several backend instances (Redis, see {@link SharedState}) the
+ * one-per-second slots and the cache are shared, so the limit holds for the
+ * whole deployment, not per instance.
+ *
  * Returns the raw response body; callers parse it.
  */
 @Service
@@ -49,6 +54,7 @@ public class OsmGateway {
     private final String osrmUrl;
     private final String overpassUrl;
     private final String userAgent;
+    private final SharedState state;
 
     private final Map<Upstream, MinIntervalLimiter> limiters = Map.of(
             Upstream.NOMINATIM, new MinIntervalLimiter(Duration.ofSeconds(1)),
@@ -62,7 +68,9 @@ public class OsmGateway {
     public OsmGateway(@Value("${tekisi.osm.nominatim-url:https://nominatim.openstreetmap.org}") String nominatimUrl,
                       @Value("${tekisi.osm.osrm-url:https://router.project-osrm.org}") String osrmUrl,
                       @Value("${tekisi.osm.overpass-url:https://overpass-api.de/api/interpreter}") String overpassUrl,
-                      @Value("${tekisi.osm.user-agent:e-tekisi/1.0}") String userAgent) {
+                      @Value("${tekisi.osm.user-agent:e-tekisi/1.0}") String userAgent,
+                      SharedState state) {
+        this.state = state;
         this.nominatimUrl = stripSlash(nominatimUrl);
         this.osrmUrl = stripSlash(osrmUrl);
         this.overpassUrl = overpassUrl;
@@ -72,7 +80,7 @@ public class OsmGateway {
     /** Nominatim search, first match only. */
     public String geocode(String query) {
         String key = query.trim().toLowerCase(Locale.ROOT);
-        return geocodeCache.getOrLoad(key, () -> send(Upstream.NOMINATIM, HttpRequest.newBuilder()
+        return cached("geocode", geocodeCache, key, () -> send(Upstream.NOMINATIM, HttpRequest.newBuilder()
                 .uri(URI.create(nominatimUrl + "/search?format=json&limit=1&q="
                         + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8)))
                 .GET()));
@@ -82,7 +90,7 @@ public class OsmGateway {
     public String route(double fromLat, double fromLng, double toLat, double toLng) {
         // ~11 m grid, so tiny GPS jitter reuses the cached route.
         String key = String.format(Locale.ROOT, "%.4f,%.4f;%.4f,%.4f", fromLat, fromLng, toLat, toLng);
-        return routeCache.getOrLoad(key, () -> send(Upstream.OSRM, HttpRequest.newBuilder()
+        return cached("route", routeCache, key, () -> send(Upstream.OSRM, HttpRequest.newBuilder()
                 .uri(URI.create(String.format(Locale.ROOT,
                         "%s/route/v1/driving/%s,%s;%s,%s?overview=full&geometries=geojson",
                         osrmUrl, fromLng, fromLat, toLng, toLat)))
@@ -91,15 +99,61 @@ public class OsmGateway {
 
     /** Overpass QL query, cached by {@code cacheKey}. */
     public String overpass(String cacheKey, String query) {
-        return overpassCache.getOrLoad(cacheKey, () -> send(Upstream.OVERPASS, HttpRequest.newBuilder()
+        return cached("overpass", overpassCache, cacheKey, () -> send(Upstream.OVERPASS, HttpRequest.newBuilder()
                 .uri(URI.create(overpassUrl))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(
                         "data=" + URLEncoder.encode(query, StandardCharsets.UTF_8)))));
     }
 
+    /** The local cache, or with shared state the deployment-wide one (same TTL). */
+    private String cached(String kind, TtlCache local, String key, java.util.function.Supplier<String> loader) {
+        if (!state.shared()) return local.getOrLoad(key, loader);
+        String k = "osm:cache:" + kind + ":" + sha256(key);
+        return state.get(k).orElseGet(() -> {
+            String v = loader.get();
+            state.put(k, v, local.ttl());
+            return v;
+        });
+    }
+
+    /**
+     * One request per second per service across every instance: each caller
+     * claims the next free one-second slot (up to {@link #MAX_QUEUE_WAIT} ahead)
+     * and waits for it.
+     */
+    private boolean acquireSharedSlot(Upstream upstream) {
+        long nowMs = System.currentTimeMillis();
+        long first = nowMs / 1000;
+        for (long sec = first; sec <= first + MAX_QUEUE_WAIT.toSeconds(); sec++) {
+            if (state.putIfAbsent("osm:slot:" + upstream + ":" + sec, "1", Duration.ofSeconds(10))) {
+                long wait = sec * 1000 - System.currentTimeMillis();
+                if (wait > 0) {
+                    try {
+                        Thread.sleep(wait);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String sha256(String s) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(s.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private String send(Upstream upstream, HttpRequest.Builder request) {
-        if (!limiters.get(upstream).acquire(MAX_QUEUE_WAIT)) {
+        boolean slot = state.shared() ? acquireSharedSlot(upstream) : limiters.get(upstream).acquire(MAX_QUEUE_WAIT);
+        if (!slot) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "UPSTREAM_BUSY",
                     "Map service is busy. Try again in a moment.", null);
         }
@@ -174,6 +228,10 @@ public class OsmGateway {
         TtlCache(Duration ttl, int maxSize) {
             this.ttlMillis = ttl.toMillis();
             this.maxSize = maxSize;
+        }
+
+        Duration ttl() {
+            return Duration.ofMillis(ttlMillis);
         }
 
         String getOrLoad(String key, java.util.function.Supplier<String> loader) {
