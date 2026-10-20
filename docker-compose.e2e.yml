@@ -1,0 +1,21 @@
+# Overrides for the end-to-end run (scripts/ci-e2e.sh):
+# - the database lives in a throwaway named volume instead of ./postgres_data,
+#   so a test run can never touch a developer's local data, and `down -v`
+#   cleans it up completely;
+# - no fixed container names, so the test stack doesn't collide with a
+#   (stopped) dev stack's containers.
+services:
+  db:
+    container_name: !reset null
+    volumes: !override
+      - e2e_pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  backend:
+    container_name: !reset null
+  mailpit:
+    container_name: !reset null
+  frontend:
+    container_name: !reset null
+
+volumes:
+  e2e_pgdata:

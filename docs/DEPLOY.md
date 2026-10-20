@@ -64,6 +64,42 @@ The `backup` service dumps the database daily; see
 `docs/BACKUP_RESTORE.md` for encryption, the off-site copy and the monthly
 restore drill (`run --rm backup restore-drill`).
 
+### Staging
+
+Run a second, smaller server with the same compose file and the `staging`
+profile: same code, security and configuration as production, but its own
+domain, database and secrets, sandbox top-ups (no real money) and a
+`noindex` header so search engines skip it.
+
+```bash
+cp .env.staging.example .env.staging   # fill in; different secrets from prod
+docker compose -f docker-compose.prod.yml --env-file .env.staging up -d --build
+```
+
+Use it to rehearse every release (deploy there first, run the e2e suite
+against it with `E2E_BASE_URL` / `E2E_API_URL`), the safety-alert drill and the
+restore drill. Never copy production data into staging; seed test accounts
+instead.
+
+### Continuous integration
+
+Both repos' GitHub Actions run their unit checks, and an **End-to-end (full
+stack)** job that checks out the other repo and runs
+`scripts/ci-e2e.sh`: the whole app in Docker on a throwaway database, driven
+by the Playwright suite. Set these once in each repository's settings:
+
+- variable `FRONTEND_REPOSITORY` (in the backend repo) / `BACKEND_REPOSITORY`
+  (in the frontend repo): `owner/name` of the other repo;
+- secret `CROSS_REPO_TOKEN`: a fine-grained token with read access to the
+  other repo (only needed if it is private);
+- secret `NVD_API_KEY` (backend repo): free key from nvd.nist.gov for the
+  OWASP dependency check, which now fails the build on CVSS 7+ findings.
+  Suppress vetted false positives in `e-tekisi/dependency-check-suppressions.xml`.
+
+The frontend build also fails on high-severity `npm audit` findings in
+production dependencies. To run the full-stack suite locally, stop the dev
+stack and run `SKIP_NPM_CI=1 scripts/ci-e2e.sh ../path/to/frontend`.
+
 The two topologies below are for when one server is no longer enough.
 
 ---
