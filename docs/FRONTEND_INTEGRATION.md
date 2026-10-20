@@ -314,7 +314,8 @@ panic button above). Create the first operator with
 
 | Method | Path | Returns |
 |---|---|---|
-| GET | `/api/insights?severity=&code=&bookingId=&since=&page=&size=` | `{items, page, size, totalElements, totalPages}` |
+| GET | `/api/insights?severity=&code=&bookingId=&since=&acknowledged=&page=&size=` | `{items, page, size, totalElements, totalPages}`; each item has `acknowledgedAt`, `acknowledgedBy`, `acknowledgedNote`. `acknowledged=false` lists only alerts nobody has picked up |
+| PUT | `/api/insights/{id}/ack` body `{note?}` | "I'm handling this": records the operator and time; `409 ALREADY_ACKNOWLEDGED` if someone already did |
 | GET | `/api/ops/drivers?status=PENDING_APPROVAL\|APPROVED\|REJECTED` | drivers to review, oldest sign-ups first |
 | PUT | `/api/ops/drivers/{id}/approve` | approve a driver (they're notified) |
 | PUT | `/api/ops/drivers/{id}/reject` body `{reason}` | reject or suspend; also takes them offline; the driver sees the reason |
