@@ -32,9 +32,37 @@ schema disagree. Take a backup first (`docs/BACKUP_RESTORE.md`).
 (certificates; Let's Encrypt rate-limits re-issuing).
 
 **Not routed publicly:** Swagger UI, OpenAPI docs, `/actuator/prometheus`.
-Reach them through an SSH tunnel, e.g.
-`ssh -L 8080:localhost:8080 server` plus a temporary port mapping, or from
-a monitoring container on the same Docker network.
+Prometheus reaches the metrics on the internal network.
+
+### Monitoring
+
+The stack includes Prometheus, Alertmanager and Grafana, listening on
+`127.0.0.1` only. From your machine:
+
+```bash
+ssh -L 3001:localhost:3001 -L 9090:localhost:9090 -L 9093:localhost:9093 you@server
+```
+
+- **Grafana** http://localhost:3001 (user `admin`, `GRAFANA_ADMIN_PASSWORD`):
+  the "e-Tekisi overview" dashboard (traffic, errors, p95 latency, bookings,
+  safety alerts, JVM, DB pool).
+- **Prometheus** http://localhost:9090/alerts: rules from
+  `monitoring/alerts.yml`, including `BackendDown`, `HttpServerErrorRateHigh`
+  and `SafetyAlertUnacknowledged`.
+- **Alertmanager** http://localhost:9093 sends firing alerts to
+  `MONITORING_ALERT_WEBHOOK` / `MONITORING_SLACK_WEBHOOK` /
+  `MONITORING_PAGERDUTY_KEY`. Set at least one.
+
+All of this runs on the same server, so it can't tell you the server itself
+is gone. Add an **external uptime check** (UptimeRobot, Better Stack,
+Grafana Cloud synthetic checks, ...) on `https://$DOMAIN/actuator/health`
+that pages the same on-call channel.
+
+### Backups
+
+The `backup` service dumps the database daily; see
+`docs/BACKUP_RESTORE.md` for encryption, the off-site copy and the monthly
+restore drill (`run --rm backup restore-drill`).
 
 The two topologies below are for when one server is no longer enough.
 
@@ -170,6 +198,8 @@ kubectl rollout status deployment/tekisi
 ## Post-deploy verification
 
 - [ ] `/actuator/health` returns `UP` on every replica.
+- [ ] Prometheus → Status → Targets shows `tekisi-backend` UP.
+- [ ] `docker compose ps` shows `backup` healthy (after the first run).
 - [ ] No new alerts fired in the 10-minute window after switch.
 - [ ] One synthetic booking (`tests/smoke.sh`) completes end-to-end
       including audit row + insight row.

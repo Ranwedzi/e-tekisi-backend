@@ -1,5 +1,89 @@
 # Backup & Restore — Tekisi Postgres
 
+## Single server (`docker-compose.prod.yml`) — start here
+
+The `backup` service (`deploy/backup/`) takes a `pg_dump` at start-up and
+then every day at `BACKUP_AT` (default 02:00, `TZ` Africa/Johannesburg).
+That is an **RPO of up to 24 hours**; if that's too much, add WAL archiving
+as described under "Larger deployments" below.
+
+Each dump is checked with `pg_restore --list` before it counts, kept in the
+`tekisi_backups` volume for `BACKUP_KEEP_DAYS` (14), and optionally:
+
+- **encrypted** to an [age](https://age-encryption.org) public key
+  (`BACKUP_AGE_RECIPIENT`). The private key never goes on the server, so
+  someone who gets into the server can't read old backups;
+- **copied off-site** with rclone (`BACKUP_RCLONE_REMOTE`, any rclone
+  destination, credentials inline). The service refuses to copy an
+  unencrypted dump off-site. Set the bucket's own lifecycle rule (e.g. 90
+  days) for off-site retention.
+
+A failed backup is logged and, if `BACKUP_ALERT_WEBHOOK` is set, posted
+there. The container turns **unhealthy** when the last good backup is over
+26 hours old (`docker compose ps` shows it).
+
+### Set-up
+
+```bash
+# On your own machine, not the server. Keep key.txt in your password manager.
+age-keygen -o key.txt          # prints "Public key: age1..."
+```
+
+Put the public key in `BACKUP_AGE_RECIPIENT` and the destination in
+`BACKUP_RCLONE_REMOTE` in `.env.prod`, then `up -d` the stack. Check the first
+run:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs backup
+```
+
+Also keep **`DATA_ENCRYPTION_KEY`** with the backups' private key: payout
+bank details in the dump are encrypted with it and unreadable without it.
+
+### Back up now (e.g. before an upgrade)
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backup now
+```
+
+### Restore drill (monthly, and after changing anything above)
+
+Restores a dump into a throwaway database inside the backup container,
+checks the Flyway version and the ledger, and shows row counts next to the
+live database. The live database isn't touched.
+
+```bash
+# newest local dump, unencrypted
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backup restore-drill
+
+# encrypted dump: mount the private key for the duration of the drill
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm   -v "$HOME/key.txt:/key.txt:ro" -e AGE_IDENTITY_FILE=/key.txt   backup restore-drill etekisi-20261020T000000Z.dump.age
+```
+
+It ends with `RESTORE DRILL PASSED` (or `FAILED`, exit code 1). Note the
+date and the time it took in your ops log. At least once, also drill from the
+**off-site** copy: download it with rclone onto another machine and run the
+same command there, because that's the copy you'll need if the server is lost.
+
+### Restoring for real
+
+1. Stop the app: `docker compose ... stop backend frontend`.
+2. Take one more dump of the current state if the database still runs
+   (`run --rm backup now`), in case you need something from it later.
+3. Restore over the live database (decrypt first if needed:
+   `age -d -i key.txt -o etekisi.dump etekisi-....dump.age`):
+
+   ```bash
+   docker compose ... run --rm -v "$PWD/etekisi.dump:/restore.dump:ro" --entrypoint sh backup -c      'pg_restore --clean --if-exists --no-owner --no-privileges -d "$PGDATABASE" /restore.dump'
+   ```
+
+4. Start the app: `docker compose ... up -d`. Flyway checks the schema on
+   start; the backend won't start if it doesn't match.
+
+---
+
+## Larger deployments (RPO minutes)
+
 ## Objectives
 
 - **RPO (Recovery Point Objective):** ≤ 5 minutes of data loss.
@@ -96,9 +180,10 @@ docker exec tekisi-restore psql -U postgres -d etekisi \
 
 ## What is NOT backed up here
 
-- **GPS pings** beyond 7 days are pruned by application policy and not
-  considered durable. If you need them retained, change
-  `tekisi.gps.retention-days` and the WAL alone is not enough.
+- **GPS pings, chat, notifications and old driver locations** are deleted
+  by `DataRetentionJob` after `RETENTION_*_DAYS` (POPIA). A backup holds
+  them for up to `BACKUP_KEEP_DAYS` (plus the off-site retention) longer;
+  say so in the privacy policy.
 - **Idempotency keys** (`agent_schema.idempotency_keys`) are restorable but
   not safety-critical; expired entries are pruned daily.
 - **In-flight HTTP requests** at the moment of failure are lost — this is
