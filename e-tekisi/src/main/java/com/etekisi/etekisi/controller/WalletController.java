@@ -34,6 +34,13 @@ public class WalletController {
         return wallets.view(userId);
     }
 
+    /** How much can still be topped up today, and room left under the wallet's maximum balance. */
+    @GetMapping("/{userId}/limits")
+    public com.etekisi.etekisi.service.MoneyLimits.Remaining limits(@PathVariable Long userId) {
+        currentUser.requireSelf(userId, Role.COMMUTER);
+        return wallets.limits(userId);
+    }
+
     /** Sandbox-only until a real PaymentProvider exists; see SandboxPaymentProvider. */
     @PostMapping("/{userId}/topup")
     public WalletDto topUp(@PathVariable Long userId, @RequestParam BigDecimal amount) {

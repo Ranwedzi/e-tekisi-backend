@@ -26,6 +26,13 @@ public class PayoutController {
         this.currentUser = currentUser;
     }
 
+    /** How much the driver can still cash out in the next 24 hours. */
+    @GetMapping("/driver/{driverId}/limits")
+    public com.etekisi.etekisi.service.MoneyLimits.PayoutRemaining limits(@PathVariable Long driverId) {
+        currentUser.requireSelf(driverId, Role.DRIVER);
+        return payouts.limits(driverId);
+    }
+
     @GetMapping("/driver/{driverId}")
     public List<PayoutDto> getPayouts(@PathVariable Long driverId) {
         currentUser.requireSelf(driverId, Role.DRIVER);
@@ -50,8 +57,9 @@ public class PayoutController {
     }
 
     @PutMapping("/{payoutId}/approve")
-    public PayoutOpsDto approve(@PathVariable Long payoutId) {
-        return payouts.approve(payoutId, requireStaff());
+    public PayoutOpsDto approve(@PathVariable Long payoutId,
+                                @RequestBody(required = false) com.etekisi.etekisi.dto.api.ApiRecords.ApprovePayoutRequest body) {
+        return payouts.approve(payoutId, requireStaff(), body != null && Boolean.TRUE.equals(body.acknowledgeRisk()));
     }
 
     @PutMapping("/{payoutId}/paid")

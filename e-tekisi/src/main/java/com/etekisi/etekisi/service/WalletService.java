@@ -25,6 +25,7 @@ public class WalletService {
     private final LedgerService ledger;
     private final ObjectProvider<PaymentProvider> payments;
     private final PaymentRiskReviewer risk;
+    private final MoneyLimits limits;
     private final BigDecimal topUpMin;
     private final BigDecimal topUpMax;
 
@@ -32,12 +33,14 @@ public class WalletService {
                          LedgerService ledger,
                          ObjectProvider<PaymentProvider> payments,
                          PaymentRiskReviewer risk,
+                         MoneyLimits limits,
                          @Value("${tekisi.payments.topup-min:10.00}") BigDecimal topUpMin,
                          @Value("${tekisi.payments.topup-max:2000.00}") BigDecimal topUpMax) {
         this.wallets = wallets;
         this.ledger = ledger;
         this.payments = payments;
         this.risk = risk;
+        this.limits = limits;
         this.topUpMin = topUpMin;
         this.topUpMax = topUpMax;
     }
@@ -92,6 +95,7 @@ public class WalletService {
         }
 
         Wallet w = lockOrCreate(commuterId);
+        limits.checkTopUp(w, amount); // before anything is charged
         int recent = ledger.countLast24h(commuterId, Role.COMMUTER, WalletTransaction.Type.TOPUP);
         risk.reviewTopUp(commuterId, amount.doubleValue(), w.getTotalTrips(), recent);
 
@@ -103,6 +107,11 @@ public class WalletService {
         }
         credit(w, amount, WalletTransaction.Type.TOPUP, null, result.providerReference());
         return WalletDto.from(w);
+    }
+
+    @Transactional
+    public MoneyLimits.Remaining limits(Long commuterId) {
+        return limits.topUpRemaining(getOrCreate(commuterId));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
