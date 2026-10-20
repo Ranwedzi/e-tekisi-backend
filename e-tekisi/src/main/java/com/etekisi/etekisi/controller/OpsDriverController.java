@@ -5,6 +5,7 @@ import com.etekisi.etekisi.model.DriverApproval;
 import com.etekisi.etekisi.model.Role;
 import com.etekisi.etekisi.repository.DriverRepository;
 import com.etekisi.etekisi.security.CurrentUser;
+import com.etekisi.etekisi.service.DriverDocumentService;
 import com.etekisi.etekisi.service.NotificationService;
 import com.etekisi.etekisi.web.ApiException;
 import jakarta.validation.Valid;
@@ -18,8 +19,9 @@ import java.util.List;
 
 /**
  * Operator review of driver accounts (OPERATOR/ADMIN only, via SecurityConfig).
- * Operators compare the licence, PrDP and operating-permit details against the
- * driver's documents before approving; until then the driver can't take trips.
+ * Operators check the driver's uploaded documents (OpsDocumentController) and
+ * can only approve once the required ones are accepted; until then the driver
+ * can't take trips.
  */
 @RestController
 @RequestMapping("/api/ops/drivers")
@@ -47,11 +49,14 @@ public class OpsDriverController {
     private final DriverRepository drivers;
     private final NotificationService notifications;
     private final CurrentUser currentUser;
+    private final DriverDocumentService documents;
 
-    public OpsDriverController(DriverRepository drivers, NotificationService notifications, CurrentUser currentUser) {
+    public OpsDriverController(DriverRepository drivers, NotificationService notifications, CurrentUser currentUser,
+                               DriverDocumentService documents) {
         this.drivers = drivers;
         this.notifications = notifications;
         this.currentUser = currentUser;
+        this.documents = documents;
     }
 
     /** {@code ?status=PENDING_APPROVAL|APPROVED|REJECTED} (default PENDING_APPROVAL), oldest sign-ups first. */
@@ -68,6 +73,7 @@ public class OpsDriverController {
         if (d.isApproved()) {
             throw ApiException.conflict("DRIVER_ALREADY_APPROVED", "This driver is already approved.");
         }
+        documents.requireComplete(driverId);
         d.setApprovalStatus(DriverApproval.APPROVED);
         d.setApprovalNote(null);
         stamp(d);

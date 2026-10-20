@@ -51,13 +51,14 @@ public class AccountService {
     private final QueueRepository queue;
     private final DriverLocationRepository locations;
     private final BCryptPasswordEncoder passwords;
+    private final DriverDocumentService driverDocuments;
 
     public AccountService(UserRepository users, DriverRepository drivers, BookingRepository bookings,
                           WalletRepository wallets, WalletTransactionRepository ledger,
                           PayoutRequestRepository payouts, MessageRepository messages,
                           NotificationRepository notifications, SavedRankRepository savedRanks,
                           QueueRepository queue, DriverLocationRepository locations,
-                          BCryptPasswordEncoder passwords) {
+                          BCryptPasswordEncoder passwords, DriverDocumentService driverDocuments) {
         this.users = users;
         this.drivers = drivers;
         this.bookings = bookings;
@@ -70,6 +71,7 @@ public class AccountService {
         this.queue = queue;
         this.locations = locations;
         this.passwords = passwords;
+        this.driverDocuments = driverDocuments;
     }
 
     // ------------------------------------------------------------------ export --
@@ -110,6 +112,9 @@ public class AccountService {
             }).toList());
             out.put("lastKnownLocation", locations.findById(id).map(l -> Map.of(
                     "lat", l.getLat(), "lng", l.getLng(), "at", String.valueOf(l.getLastUpdated()))).orElse(null));
+            // Metadata only; each file can be opened from the documents page.
+            out.put("documents", driverDocuments.list(id).stream()
+                    .map(com.etekisi.etekisi.dto.api.DocumentDto::from).toList());
             out.put("queueTickets", queue.findByDriverIdOrderByJoinedAtDesc(id).stream()
                     .map(t -> Map.of("rank", t.getTaxiRank(), "status", t.getStatus(),
                             "joinedAt", String.valueOf(t.getJoinedAt()))).toList());
@@ -181,6 +186,7 @@ public class AccountService {
             }
             queue.deleteByDriverId(id);
             locations.deleteById(id);
+            driverDocuments.deleteAllFor(id);
 
             d.setFullName("Deleted driver");
             d.setEmail("deleted-driver-" + id + "@deleted.invalid");

@@ -121,6 +121,7 @@ Everything sensitive comes from environment variables; see
 | `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`, `MAIL_FROM` | SMTP for verification and password-reset emails (required in prod; dev uses Mailpit at http://localhost:8025) |
 | `SMS_PROVIDER` (`none`, `log`, `bulksms`, `clickatell`, `twilio`, `generic`), `SMS_URL`, `SMS_USERNAME`, `SMS_PASSWORD`, `SMS_FROM` | SMS codes for phone verification and reset (optional) |
 | `PUBLIC_URL`, `LEGAL_VERSION` | frontend address used in email links; version of the terms people accept (bump it when the documents change) |
+| `DRIVER_REQUIRED_DOCUMENTS` (`DRIVERS_LICENCE,PRDP,OPERATING_LICENCE`) | documents an operator must accept before approving a driver |
 | `LOGIN_IP_REQUESTS_PER_MINUTE` (60) | per-IP limit on sign-in/sign-up/reset; account lockout after 5 wrong passwords is separate |
 | `SAFETY_ALERT_WEBHOOK`, `SAFETY_ALERT_WEBHOOK_FORMAT`, `SAFETY_ALERT_WEBHOOK_SECRET` | pages on-call for panic-button alerts (generic JSON or PagerDuty) |
 | `METRICS_USERNAME`, `METRICS_PASSWORD` | HTTP Basic for the Prometheus scraper on `/actuator/prometheus` |

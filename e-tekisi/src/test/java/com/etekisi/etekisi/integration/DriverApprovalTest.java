@@ -73,6 +73,11 @@ class DriverApprovalTest {
         mvc.perform(get("/api/ops/drivers").with(as(Role.OPERATOR, OPERATOR)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.id == " + id + ")].licenseNumber").value("LIC-777"));
+        // Not before the required documents are accepted.
+        mvc.perform(put("/api/ops/drivers/" + id + "/approve").with(as(Role.OPERATOR, OPERATOR)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DOCUMENTS_INCOMPLETE"));
+        fixtures.acceptRequiredDocuments(id);
         mvc.perform(put("/api/ops/drivers/" + id + "/approve").with(as(Role.OPERATOR, OPERATOR)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.approvalStatus").value("APPROVED"))

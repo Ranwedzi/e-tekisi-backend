@@ -314,7 +314,28 @@ offers and queues return `403 ACCOUNT_NOT_VERIFIED`.
 | POST | `/api/me/password` body `{currentPassword, newPassword}` | commuter/driver | signs out every session |
 | POST | `/api/me/terms` body `{version}` | commuter/driver | accept a new version of the terms |
 
-### 3.4b Your account (POPIA)
+### 3.4b Driver documents
+
+Files are PDF, JPEG, PNG or WebP up to 5 MB (checked by content, not by
+name), stored encrypted. Types: `DRIVERS_LICENCE`, `PRDP`,
+`OPERATING_LICENCE`, `ROADWORTHY`, `VEHICLE_PHOTO`, `ID_DOCUMENT`, `OTHER`.
+An operator can only approve a driver once every type in
+`DRIVER_REQUIRED_DOCUMENTS` (default licence, PrDP, operating licence) has
+an accepted, unexpired document (`409 DOCUMENTS_INCOMPLETE` with `missing`).
+When an accepted required document expires, a daily job takes the driver
+offline and back to `PENDING_APPROVAL` with a note.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/me/documents` | driver | `{required, missing, items}` |
+| POST | `/api/me/documents` multipart `type`, `file`, `expiresOn?` | driver | replaces an unreviewed one of the same type |
+| DELETE | `/api/me/documents/{id}` | driver | only while unreviewed |
+| GET | `/api/me/documents/{id}/file`, `/api/ops/documents/{id}/file` | owner / staff | the file; staff views are logged |
+| GET | `/api/ops/drivers/{id}/documents` | staff | same shape as the driver's list |
+| PUT | `/api/ops/documents/{id}/accept` body `{expiresOn?}` | staff | operator can correct the expiry date |
+| PUT | `/api/ops/documents/{id}/reject` body `{reason}` | staff | the driver is notified with the reason |
+
+### 3.4c Your account (POPIA)
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|

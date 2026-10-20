@@ -77,6 +77,36 @@ public class FieldEncryptor {
         }
     }
 
+    /**
+     * For files (driver documents): returns IV || ciphertext+tag. {@code context}
+     * is bound in as additional authenticated data, so a blob only decrypts
+     * for the same context (e.g. the same driver): rows can't be swapped.
+     */
+    public byte[] encryptBytes(byte[] plaintext, String context) {
+        try {
+            byte[] iv = new byte[IV_BYTES];
+            random.nextBytes(iv);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
+            cipher.updateAAD(context.getBytes(StandardCharsets.UTF_8));
+            byte[] ct = cipher.doFinal(plaintext);
+            return ByteBuffer.allocate(iv.length + ct.length).put(iv).put(ct).array();
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Encryption failed", e);
+        }
+    }
+
+    public byte[] decryptBytes(byte[] stored, String context) {
+        try {
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, stored, 0, IV_BYTES));
+            cipher.updateAAD(context.getBytes(StandardCharsets.UTF_8));
+            return cipher.doFinal(stored, IV_BYTES, stored.length - IV_BYTES);
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
+            throw new IllegalStateException("Could not decrypt a stored file (wrong DATA_ENCRYPTION_KEY or tampered?)", e);
+        }
+    }
+
     public static boolean isEncrypted(String value) {
         return value != null && value.startsWith(PREFIX);
     }
