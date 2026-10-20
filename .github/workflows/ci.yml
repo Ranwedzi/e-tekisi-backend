@@ -79,8 +79,10 @@ jobs:
     defaults:
       run:
         working-directory: e-tekisi
-    # Allow this to fail without blocking PRs while we tune suppressions.
-    continue-on-error: true
+    # Blocking: a dependency with a known CVSS >= 7 fails the build. Vetted
+    # false positives go in e-tekisi/dependency-check-suppressions.xml with a
+    # reason. Set the NVD_API_KEY secret (free from nvd.nist.gov), or the
+    # database download is very slow.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -92,8 +94,66 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Cache the vulnerability database
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: owasp-db-${{ github.run_id }}
+          restore-keys: owasp-db-
+
       - name: Run OWASP dependency-check
-        run: ./mvnw -B -ntp org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 || true
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: >-
+          ./mvnw -B -ntp org.owasp:dependency-check-maven:check
+          -DfailBuildOnCVSS=7
+          -DsuppressionFile=dependency-check-suppressions.xml
+          -DnvdApiKey="$NVD_API_KEY"
+          -Dformats=HTML,JSON
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: e-tekisi/target/dependency-check-report.*
+
+  # The whole app in Docker (Postgres, backend, Mailpit, frontend) driven by
+  # the frontend's Playwright suite. Needs the repository variable
+  # FRONTEND_REPOSITORY (owner/name) and, if that repo is private, a
+  # CROSS_REPO_TOKEN secret that can read it.
+  e2e:
+    name: End-to-end (full stack)
+    runs-on: ubuntu-latest
+    needs: [build-and-test]
+    if: vars.FRONTEND_REPOSITORY != ''
+    timeout-minutes: 30
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          path: backend
+
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.FRONTEND_REPOSITORY }}
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          path: frontend
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run the stack and the e2e suite
+        run: backend/scripts/ci-e2e.sh frontend
+
+      - name: Upload Playwright results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: frontend/test-results/
 
   docker-build:
     name: Build Docker image

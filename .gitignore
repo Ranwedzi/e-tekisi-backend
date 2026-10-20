@@ -6,3 +6,4 @@ postgres_data/
 .env
 target/
 .env.prod
+.env.staging

@@ -24,6 +24,7 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+		X-Robots-Tag "{$ROBOTS_TAG:all}"
 		-Server
 	}
 

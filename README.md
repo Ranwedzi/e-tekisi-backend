@@ -143,7 +143,7 @@ skipped otherwise.
 ## More docs
 
 - `docs/FRONTEND_INTEGRATION.md` — API contract for the frontend
-- `docs/DEPLOY.md` — production deployment (`docker-compose.prod.yml` + `deploy/Caddyfile`)
+- `docs/DEPLOY.md` — production and staging deployment (`docker-compose.prod.yml` + `deploy/Caddyfile`), CI set-up
 - `docs/BACKUP_RESTORE.md` — database backups and the restore drill
 
 ## Personal data (POPIA)
