@@ -79,6 +79,17 @@ groups:
           summary: "Safety CRITICAL alert fired — page on-call"
           runbook: "https://runbooks.tekisi/safety-critical"
 
+      - alert: SafetyAlertUnacknowledged
+        # Second line of escalation: nobody has pressed "I'm handling this"
+        # on /ops within 5 minutes (webhook page missed, or no webhook set).
+        expr: max(tekisi_safety_unacknowledged) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value }} safety alert(s) unacknowledged on /ops for 5m"
+          runbook: "https://runbooks.tekisi/safety-critical"
+
       - alert: EventDropped
         expr: increase(tekisi_events_dropped_total[1m]) > 0
         for: 1m

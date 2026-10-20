@@ -14,6 +14,15 @@ frontend. Backend, frontend and Postgres are not published on the host.
 3. `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`
 4. Check `https://$DOMAIN/actuator/health` returns `UP`, then sign in at
    `https://$DOMAIN/login` with the bootstrap operator ("e-Tekisi staff?").
+5. **Rehearse a safety alert before any real user rides.** With
+   `SAFETY_ALERT_WEBHOOK` set, sign up a test commuter, request a trip and
+   press the SOS button. Check that the on-call phone/channel gets the page
+   within a minute, then open `/ops` → Safety alerts and press "I'm handling
+   this". The backend logs `agent.ops.alert.webhook_unset` at start-up if
+   the webhook is missing, and `agent.ops.alert.webhook_failed` for each
+   failed attempt (three per alert). If Prometheus is running, an alert left
+   unacknowledged for 5 minutes fires `SafetyAlertUnacknowledged` as a
+   second page.
 
 **Updating:** `git pull` in both repos, then re-run step 3. Flyway migrates
 the database on start; the backend refuses to start if the entities and

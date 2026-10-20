@@ -3,20 +3,22 @@ package com.etekisi.etekisi.agent.controller;
 import com.etekisi.etekisi.agent.insight.InsightCode;
 import com.etekisi.etekisi.agent.insight.OperationalInsight;
 import com.etekisi.etekisi.agent.insight.OperationalInsightRepository;
+import com.etekisi.etekisi.security.CurrentUser;
+import com.etekisi.etekisi.web.ApiException;
+import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Phase 3.7 — read-only operator feed over {@code OperationalInsight} rows.
+ * Phase 3.7 — operator feed over {@code OperationalInsight} rows. The only
+ * write is acknowledging an alert ({@code PUT /{id}/ack}).
  *
  * <p>SecurityConfig restricts {@code /api/insights/**} to the OPERATOR /
  * ADMIN roles, so this controller never enforces auth itself.
@@ -37,10 +39,14 @@ public class InsightController {
     private static final int MAX_PAGE_SIZE = 200;
     private static final int DEFAULT_PAGE_SIZE = 50;
 
-    private final OperationalInsightRepository repo;
+    public record AckRequest(@Size(max = 300) String note) {}
 
-    public InsightController(OperationalInsightRepository repo) {
+    private final OperationalInsightRepository repo;
+    private final CurrentUser currentUser;
+
+    public InsightController(OperationalInsightRepository repo, CurrentUser currentUser) {
         this.repo = repo;
+        this.currentUser = currentUser;
     }
 
     @GetMapping
@@ -49,6 +55,7 @@ public class InsightController {
             @RequestParam(required = false) String code,
             @RequestParam(required = false) Long bookingId,
             @RequestParam(required = false) Instant since,
+            @RequestParam(required = false) Boolean acknowledged,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
 
@@ -61,7 +68,7 @@ public class InsightController {
         InsightCode codeEnum = code == null ? null : InsightCode.valueOf(code);
 
         Page<OperationalInsight> result = repo.findFiltered(
-                sev, codeEnum, bookingId, since,
+                sev, codeEnum, bookingId, since, acknowledged,
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<Map<String, Object>> items = result.getContent().stream()
@@ -75,6 +82,23 @@ public class InsightController {
                 "totalElements", result.getTotalElements(),
                 "totalPages", result.getTotalPages()
         );
+    }
+
+    /** "I'm handling this": records who took the alert and when, with an optional note. */
+    @PutMapping("/{id}/ack")
+    @Transactional
+    public Map<String, Object> acknowledge(@PathVariable Long id,
+                                           @jakarta.validation.Valid @RequestBody(required = false) AckRequest body) {
+        OperationalInsight i = repo.findById(id).orElseThrow(() -> ApiException.notFound("Insight"));
+        if (i.getAcknowledgedAt() != null) {
+            throw ApiException.conflict("ALREADY_ACKNOWLEDGED",
+                    "Operator " + i.getAcknowledgedBy() + " already acknowledged this alert.");
+        }
+        i.setAcknowledgedAt(Instant.now());
+        i.setAcknowledgedBy(currentUser.id());
+        String note = body == null || body.note() == null ? null : body.note().trim();
+        i.setAcknowledgedNote(note == null || note.isEmpty() ? null : note);
+        return project(repo.save(i));
     }
 
     /**
@@ -93,6 +117,9 @@ public class InsightController {
         m.put("message", i.getMessage());
         m.put("correlationId", i.getCorrelationId());
         m.put("createdAt", i.getCreatedAt());
+        m.put("acknowledgedAt", i.getAcknowledgedAt());
+        m.put("acknowledgedBy", i.getAcknowledgedBy());
+        m.put("acknowledgedNote", i.getAcknowledgedNote());
         return m;
     }
 }

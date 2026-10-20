@@ -56,4 +56,10 @@ public class OperationalInsight {
 
     @Column(nullable = false)
     private Instant createdAt;
+
+    /** Set when an operator takes ownership of the alert. */
+    private Instant acknowledgedAt;
+    private Long acknowledgedBy;
+    @Column(length = 300)
+    private String acknowledgedNote;
 }
