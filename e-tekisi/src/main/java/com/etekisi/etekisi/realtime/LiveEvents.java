@@ -59,7 +59,7 @@ public class LiveEvents {
     public LiveEvents(ObjectProvider<LiveEventRelay> relay, ObjectProvider<MeterRegistry> registry,
                       ObjectProvider<BookingRepository> bookings) {
         this.bookings = bookings;
-        this.relay = relay.getIfAvailable(() -> LiveEventRelay.LOCAL);
+        this.relay = relay.getIfAvailable(LiveEventRelay::local);
         this.relay.onMessage(this::deliverLocal);
         MeterRegistry r = registry.getIfAvailable();
         if (r != null) {
