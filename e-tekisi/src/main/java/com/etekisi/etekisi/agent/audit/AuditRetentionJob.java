@@ -3,6 +3,7 @@ package com.etekisi.etekisi.agent.audit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +39,7 @@ public class AuditRetentionJob {
         this.retentionDays = retentionDays;
     }
 
+    @SchedulerLock(name = "audit-retention", lockAtMostFor = "PT30M")
     @Scheduled(cron = "${tekisi.agent.audit.retention-cron:0 15 3 * * *}")
     public void purge() {
         if (retentionDays <= 0) {

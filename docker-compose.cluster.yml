@@ -1,0 +1,90 @@
+# Two backend instances behind a load balancer, sharing Postgres and Redis:
+# the multi-instance rehearsal (perf/CLUSTER.md). Same ports as the dev
+# stack, so stop that first:
+#
+#   docker compose stop
+#   docker compose -p tekisi-cluster -f docker-compose.cluster.yml --env-file .env up -d --build
+#
+# http://localhost:8080 round-robins over backend-a and backend-b; run the
+# frontend dev server (npm run dev) against it, the e2e suite, or
+# perf/cluster.js. Remove it all with `... down -v`.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: etekisi_cluster
+    volumes:
+      - cluster_pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d etekisi_cluster"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports:
+      - "8025:8025"
+
+  backend-a: &backend
+    build:
+      context: ./e-tekisi
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:postgresql://db:5432/etekisi_cluster
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: "1025"
+      PUBLIC_URL: http://localhost:3000
+      SMS_PROVIDER: log
+      # Both instances share sign-in counters, MFA challenges, map-service
+      # slots and live events through Redis.
+      REDIS_ENABLED: "true"
+      REDIS_HOST: redis
+      # Every test request arrives from the load balancer's one IP.
+      LOGIN_IP_REQUESTS_PER_MINUTE: "100000"
+      # As in production: INFO logging, 20 database connections per instance.
+      LOGGING_LEVEL_COM_ETEKISI: INFO
+      DB_POOL_MAX: "20"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+
+  backend-b: *backend
+
+  lb:
+    image: caddy:2-alpine
+    depends_on:
+      - backend-a
+      - backend-b
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./deploy/cluster/Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes:
+  cluster_pgdata:

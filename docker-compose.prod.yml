@@ -66,6 +66,10 @@ services:
       SMS_FROM: ${SMS_FROM:-}
       LEGAL_VERSION: ${LEGAL_VERSION:?set LEGAL_VERSION}
       STAFF_MFA_REQUIRED: ${STAFF_MFA_REQUIRED:-true}
+      # Required before running a second backend instance (perf/CLUSTER.md).
+      REDIS_ENABLED: ${REDIS_ENABLED:-false}
+      REDIS_HOST: ${REDIS_HOST:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       METRICS_USERNAME: prometheus
       METRICS_PASSWORD: ${METRICS_PASSWORD:?set METRICS_PASSWORD}
       # Pages on-call for CRITICAL safety alerts (panic button). Strongly

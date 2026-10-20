@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -429,6 +430,7 @@ public class AccountSecurityService {
     }
 
     /** Expired links and codes are useless; drop them after a week (kept that long for support questions). */
+    @SchedulerLock(name = "account-token-purge", lockAtMostFor = "PT30M")
     @Scheduled(cron = "${tekisi.account-tokens.purge-cron:0 45 3 * * *}")
     @Transactional
     public void purgeExpired() {

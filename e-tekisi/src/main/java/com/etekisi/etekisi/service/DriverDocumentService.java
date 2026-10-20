@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -229,6 +230,7 @@ public class DriverDocumentService {
      * Expired documents take the driver off the road until a current one is
      * accepted; old rejected/superseded documents are deleted.
      */
+    @SchedulerLock(name = "document-expiry", lockAtMostFor = "PT30M")
     @Scheduled(cron = "${tekisi.documents.check-cron:0 0 4 * * *}", zone = "Africa/Johannesburg")
     @Transactional
     public void dailyCheck() {

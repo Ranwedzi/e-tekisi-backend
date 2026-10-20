@@ -123,6 +123,7 @@ Everything sensitive comes from environment variables; see
 | `PUBLIC_URL`, `LEGAL_VERSION` | frontend address used in email links; version of the terms people accept (bump it when the documents change) |
 | `DRIVER_REQUIRED_DOCUMENTS` (`DRIVERS_LICENCE,PRDP,OPERATING_LICENCE`) | documents an operator must accept before approving a driver |
 | `STAFF_MFA_REQUIRED` (prod `true`, dev `false`) | operators/admins must use an authenticator app code at sign-in |
+| `REDIS_ENABLED`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | shared state and live events for more than one backend instance (`perf/CLUSTER.md`); scheduled jobs are locked in Postgres either way |
 | `LOGIN_IP_REQUESTS_PER_MINUTE` (60) | per-IP limit on sign-in/sign-up/reset; account lockout after 5 wrong passwords is separate |
 | `SAFETY_ALERT_WEBHOOK`, `SAFETY_ALERT_WEBHOOK_FORMAT`, `SAFETY_ALERT_WEBHOOK_SECRET` | pages on-call for panic-button alerts (generic JSON or PagerDuty) |
 | `METRICS_USERNAME`, `METRICS_PASSWORD` | HTTP Basic for the Prometheus scraper on `/actuator/prometheus` |
@@ -145,6 +146,7 @@ skipped otherwise.
 - `docs/FRONTEND_INTEGRATION.md` — API contract for the frontend
 - `docs/DEPLOY.md` — production and staging deployment (`docker-compose.prod.yml` + `deploy/Caddyfile`), CI set-up
 - `docs/BACKUP_RESTORE.md` — database backups and the restore drill
+- `perf/CLUSTER.md` — running two or more backend instances, and the load-test results
 
 ## Personal data (POPIA)
 

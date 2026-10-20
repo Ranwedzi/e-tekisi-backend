@@ -15,6 +15,7 @@ import com.etekisi.etekisi.web.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -350,6 +351,7 @@ public class BookingService {
      * Returns lapsed offers to PENDING so other drivers can take the trip.
      * Requests also expire lazily when touched, so this only keeps lists tidy.
      */
+    @SchedulerLock(name = "offer-expiry", lockAtMostFor = "PT1M", lockAtLeastFor = "PT5S")
     @Scheduled(fixedDelayString = "${tekisi.booking.offer-expiry-check-ms:15000}")
     public void expireStaleOffers() {
         List<Booking> stale = bookings.findByStatusAndOfferExpiresAtBefore(BookingStatus.OFFERED, Instant.now());
