@@ -8,6 +8,7 @@ import java.time.LocalDate;
 
 /** A document a driver uploaded for vetting. The file itself is in {@link DriverDocumentFile}, encrypted. */
 @Entity
+@EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Documents.class)
 @Table(name = "driver_documents", schema = "driver_schema")
 @Data
 public class DriverDocument {

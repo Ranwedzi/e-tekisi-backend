@@ -8,6 +8,7 @@ import java.time.Instant;
 
 /** API input uses CreateBookingRequest; API output uses BookingDto. */
 @Entity
+@EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Bookings.class)
 @Table(name = "bookings", schema = "commuter_schema")
 @Data
 public class Booking {

@@ -5,6 +5,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Entity
+@EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Queue.class)
 @Table(name = "queue_tickets", schema = "driver_schema")
 @Data
 public class QueueTicket {

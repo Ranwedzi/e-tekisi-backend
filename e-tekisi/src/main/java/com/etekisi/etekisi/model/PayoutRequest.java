@@ -19,6 +19,7 @@ import java.time.Instant;
  * </pre>
  */
 @Entity
+@EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Payouts.class)
 @Table(name = "payout_requests", schema = "driver_schema")
 @Data
 public class PayoutRequest {
