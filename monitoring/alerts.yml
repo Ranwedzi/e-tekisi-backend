@@ -139,3 +139,34 @@ groups:
         annotations:
           summary: "Disk usage > 85% — audit retention may be lagging"
           runbook: "https://runbooks.tekisi/disk"
+
+  - name: tekisi-money
+    interval: 60s
+    rules:
+      - alert: ReconciliationDiscrepancy
+        # The daily check found money that doesn't add up (see /ops -> Payouts -> Reconciliation).
+        expr: max(tekisi_reconciliation_critical) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Reconciliation found {{ $value }} money discrepancies"
+          runbook: "https://runbooks.tekisi/reconciliation"
+
+      - alert: ReconciliationFailed
+        expr: max(tekisi_reconciliation_failed) == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The last reconciliation run errored; the books are unchecked"
+          runbook: "https://runbooks.tekisi/reconciliation"
+
+      - alert: ReconciliationNotRun
+        expr: time() - max(tekisi_reconciliation_last_success_seconds) > 93600
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No completed reconciliation for over 26 hours"
+          runbook: "https://runbooks.tekisi/reconciliation"
