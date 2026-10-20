@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 /** API input uses RegisterDriverRequest; API output uses DriverDto. */
 @Entity
@@ -41,4 +42,26 @@ public class Driver {
 
     @Column(name = "is_active", nullable = false)
     private boolean isActive = false;
+
+    /** Operators check licence, PrDP and permit details before a driver can take trips. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", nullable = false, length = 20)
+    private DriverApproval approvalStatus = DriverApproval.PENDING_APPROVAL;
+
+    /** Shown to the driver when rejected; free text from the operator. */
+    @Column(name = "approval_note", length = 300)
+    private String approvalNote;
+
+    @Column(name = "approval_decided_at")
+    private Instant approvalDecidedAt;
+
+    @Column(name = "approval_decided_by")
+    private Long approvalDecidedBy;
+
+    @Column(name = "registered_at", nullable = false)
+    private Instant registeredAt = Instant.now();
+
+    public boolean isApproved() {
+        return approvalStatus == DriverApproval.APPROVED;
+    }
 }

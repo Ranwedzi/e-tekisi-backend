@@ -7,6 +7,7 @@ import com.etekisi.etekisi.dto.api.LoginRequest;
 import com.etekisi.etekisi.dto.api.RegisterCommuterRequest;
 import com.etekisi.etekisi.dto.api.RegisterDriverRequest;
 import com.etekisi.etekisi.model.Driver;
+import com.etekisi.etekisi.model.DriverApproval;
 import com.etekisi.etekisi.model.Role;
 import com.etekisi.etekisi.model.StaffUser;
 import com.etekisi.etekisi.model.User;
@@ -87,8 +88,11 @@ public class RegistrationController {
         driver.setTaxiPlate(req.taxiPlate());
         driver.setLicenseNumber(req.licenseNumber());
         driver.setPassword(passwordEncoder.encode(req.password()));
+        // New drivers wait for an operator to check their details before they can take trips.
+        driver.setApprovalStatus(DriverApproval.PENDING_APPROVAL);
         Driver saved = driverRepository.save(driver);
-        return Map.of("status", "REGISTERED", "userId", saved.getId(), "role", Role.DRIVER.name());
+        return Map.of("status", "REGISTERED", "userId", saved.getId(), "role", Role.DRIVER.name(),
+                "approvalStatus", saved.getApprovalStatus().name());
     }
 
     /**
@@ -175,6 +179,12 @@ public class RegistrationController {
     public DriverDto toggleStatus(@PathVariable Long id, @RequestParam boolean active) {
         currentUser.requireSelf(id, Role.DRIVER);
         Driver driver = driverRepository.findById(id).orElseThrow(() -> ApiException.notFound("Driver"));
+        if (active && !driver.isApproved()) {
+            throw ApiException.conflict("DRIVER_NOT_APPROVED",
+                    driver.getApprovalStatus() == DriverApproval.REJECTED
+                            ? "Your driver account was not approved" + (driver.getApprovalNote() != null ? ": " + driver.getApprovalNote() : ".")
+                            : "Your driver account is still being checked. You can go online once it's approved.");
+        }
         driver.setActive(active);
         return DriverDto.from(driverRepository.save(driver));
     }

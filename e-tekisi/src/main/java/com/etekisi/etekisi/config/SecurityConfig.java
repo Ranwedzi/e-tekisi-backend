@@ -92,7 +92,7 @@ public class SecurityConfig {
                         // Panic button: any signed-in trip participant (checked in the controller).
                         .requestMatchers(HttpMethod.POST, "/api/agents/safety/panic").authenticated()
                         // Agent surface — operators only (read-only insight + dispatch).
-                        .requestMatchers("/api/agents/**", "/api/insights/**")
+                        .requestMatchers("/api/agents/**", "/api/insights/**", "/api/ops/**")
                             .hasAnyRole("OPERATOR", "ADMIN")
                         // Driver areas. Controllers additionally check the driver is acting as themselves.
                         .requestMatchers("/api/payouts/**").hasAnyRole("DRIVER", "OPERATOR", "ADMIN")
