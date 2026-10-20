@@ -27,7 +27,8 @@ run `docker compose up -d --build` again. Production uses
 ## Production (single server, HTTPS)
 
 `docker-compose.prod.yml` runs Caddy, the frontend, the backend (prod
-profile) and Postgres. Caddy gets a Let's Encrypt certificate for your
+profile) and Postgres, plus daily backups and Prometheus, Alertmanager and
+Grafana (localhost only, reach them over SSH). Caddy gets a Let's Encrypt certificate for your
 domain and serves the site and the API from the same origin.
 
 ```bash
@@ -117,6 +118,8 @@ Everything sensitive comes from environment variables; see
 | `DATA_ENCRYPTION_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts payout bank details. Required in prod; **back it up**, losing it makes those columns unreadable |
 | `PAYMENTS_SANDBOX_ENABLED` | dev top-ups (false in prod) |
 | `RETENTION_TRIP_GPS_DAYS` (90), `RETENTION_DRIVER_LOCATION_DAYS` (7), `RETENTION_MESSAGES_DAYS` (180), `RETENTION_NOTIFICATIONS_DAYS` (90), `AUDIT_RETENTION_DAYS` (90) | how long personal data is kept; a daily job at 03:30 deletes older rows, 0 turns one off. GPS of trips with a CRITICAL safety alert is kept |
+| `SAFETY_ALERT_WEBHOOK`, `SAFETY_ALERT_WEBHOOK_FORMAT`, `SAFETY_ALERT_WEBHOOK_SECRET` | pages on-call for panic-button alerts (generic JSON or PagerDuty) |
+| `METRICS_USERNAME`, `METRICS_PASSWORD` | HTTP Basic for the Prometheus scraper on `/actuator/prometheus` |
 | `OSM_NOMINATIM_URL`, `OSM_OSRM_URL`, `OSM_OVERPASS_URL` | map services; point at self-hosted instances for production traffic (the public servers allow ~1 request/second, which the app enforces and caches around) |
 
 ## Tests
@@ -135,7 +138,7 @@ skipped otherwise.
 
 - `docs/FRONTEND_INTEGRATION.md` — API contract for the frontend
 - `docs/DEPLOY.md` — production deployment (`docker-compose.prod.yml` + `deploy/Caddyfile`)
-- `docs/BACKUP_RESTORE.md` — database backups
+- `docs/BACKUP_RESTORE.md` — database backups and the restore drill
 
 ## Personal data (POPIA)
 

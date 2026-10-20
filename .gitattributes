@@ -1,0 +1,5 @@
+# Shell scripts and container configs run on Linux: keep LF even on Windows checkouts.
+*.sh text eol=lf
+deploy/** text eol=lf
+monitoring/** text eol=lf
+mvnw text eol=lf

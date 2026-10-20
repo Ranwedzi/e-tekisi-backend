@@ -3,8 +3,10 @@
 #   cp .env.prod.example .env.prod      # fill in every value; chmod 600 .env.prod
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 #
-# Only Caddy publishes ports (80, 443). The backend, frontend and database are
-# reachable only on the internal Docker network. The site and API share one
+# Only Caddy publishes public ports (80, 443). The backend, frontend and
+# database are reachable only on the internal Docker network. Grafana (3001),
+# Prometheus (9090) and Alertmanager (9093) listen on 127.0.0.1 only: reach
+# them with an SSH tunnel, e.g. ssh -L 3001:localhost:3001 server. The site and API share one
 # origin (https://$DOMAIN), so the browser never makes cross-origin calls.
 #
 # The frontend is built from its own repo, expected next to this one; set
@@ -46,6 +48,9 @@ services:
       DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set DATA_ENCRYPTION_KEY}
       ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      # Prometheus scrapes /actuator/prometheus with these (internal network only).
+      METRICS_USERNAME: prometheus
+      METRICS_PASSWORD: ${METRICS_PASSWORD:?set METRICS_PASSWORD}
       # Pages on-call for CRITICAL safety alerts (panic button). Strongly
       # recommended: without it alerts only reach the log and /ops.
       SAFETY_ALERT_WEBHOOK: ${SAFETY_ALERT_WEBHOOK:-}
@@ -92,7 +97,92 @@ services:
       - caddy_data:/data        # certificates: keep this volume
       - caddy_config:/config
 
+  # Daily pg_dump (optionally encrypted and copied off-site); see docs/BACKUP_RESTORE.md.
+  backup:
+    build: ./deploy/backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: ${DB_NAME:-etekisi}
+      PGUSER: ${DB_USER}
+      PGPASSWORD: ${DB_PASSWORD}
+      TZ: ${TZ:-Africa/Johannesburg}
+      BACKUP_AT: ${BACKUP_AT:-02:00}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
+      BACKUP_ALERT_WEBHOOK: ${BACKUP_ALERT_WEBHOOK:-}
+    volumes:
+      - tekisi_backups:/backups
+    healthcheck:
+      # Unhealthy if the last good backup is more than 26 hours old.
+      test: ["CMD-SHELL", "test -f /backups/last-success && [ $$(( $$(date +%s) - $$(cat /backups/last-success) )) -lt 93600 ]"]
+      interval: 5m
+      timeout: 10s
+      start_period: 15m
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      METRICS_PASSWORD: ${METRICS_PASSWORD}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        printf '%s' "$$METRICS_PASSWORD" > /tmp/metrics_password &&
+        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml
+        --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=30d
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/rules/tekisi-alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    environment:
+      MONITORING_ALERT_WEBHOOK: ${MONITORING_ALERT_WEBHOOK:-}
+      MONITORING_SLACK_WEBHOOK: ${MONITORING_SLACK_WEBHOOK:-}
+      MONITORING_PAGERDUTY_KEY: ${MONITORING_PAGERDUTY_KEY:-}
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    volumes:
+      - ./deploy/monitoring/alertmanager-entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: http://localhost:3001
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./deploy/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+
 volumes:
   tekisi_pgdata:
+  tekisi_backups:
   caddy_data:
   caddy_config:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
