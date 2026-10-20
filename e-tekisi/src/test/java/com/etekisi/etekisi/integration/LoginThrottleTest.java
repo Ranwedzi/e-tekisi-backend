@@ -26,7 +26,7 @@ class LoginThrottleTest {
         MockMvc mvc = TestAuth.mvc(context);
         String email = "lock" + System.nanoTime() + "@test.dev";
         mvc.perform(post("/api/auth/register/commuter").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"fullName\":\"Lock Me\",\"email\":\"" + email + "\",\"phoneNumber\":\"0710000001\",\"password\":\"right-password\"}"))
+                        .content("{\"fullName\":\"Lock Me\",\"email\":\"" + email + "\",\"phoneNumber\":\"0710000001\",\"password\":\"right-password\",\"acceptTerms\":true,\"termsVersion\":\"test-terms-v1\"}"))
                 .andExpect(status().isOk());
 
         for (int i = 0; i < 5; i++) {
@@ -53,7 +53,7 @@ class LoginThrottleTest {
         MockMvc mvc = TestAuth.mvc(context);
         String email = "reset" + System.nanoTime() + "@test.dev";
         mvc.perform(post("/api/auth/register/commuter").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"fullName\":\"Reset Me\",\"email\":\"" + email + "\",\"phoneNumber\":\"0710000001\",\"password\":\"right-password\"}"))
+                        .content("{\"fullName\":\"Reset Me\",\"email\":\"" + email + "\",\"phoneNumber\":\"0710000001\",\"password\":\"right-password\",\"acceptTerms\":true,\"termsVersion\":\"test-terms-v1\"}"))
                 .andExpect(status().isOk());
         for (int round = 0; round < 3; round++) {
             for (int i = 0; i < 4; i++) {

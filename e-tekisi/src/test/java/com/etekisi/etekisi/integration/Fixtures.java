@@ -5,6 +5,9 @@ import com.etekisi.etekisi.repository.BookingRepository;
 import com.etekisi.etekisi.repository.DriverRepository;
 import com.etekisi.etekisi.repository.UserRepository;
 import com.etekisi.etekisi.repository.WalletRepository;
+import com.etekisi.etekisi.notify.EmailSender;
+import com.etekisi.etekisi.notify.NotifyConfig;
+import com.etekisi.etekisi.notify.SmsSender;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -20,13 +23,36 @@ public class Fixtures {
     private final DriverRepository drivers;
     private final WalletRepository wallets;
     private final BookingRepository bookings;
+    private final EmailSender email;
+    private final SmsSender sms;
 
     public Fixtures(UserRepository users, DriverRepository drivers,
-                    WalletRepository wallets, BookingRepository bookings) {
+                    WalletRepository wallets, BookingRepository bookings,
+                    EmailSender email, SmsSender sms) {
         this.users = users;
         this.drivers = drivers;
         this.wallets = wallets;
         this.bookings = bookings;
+        this.email = email;
+        this.sms = sms;
+    }
+
+    /** The token from the newest email to {@code to} whose link goes to {@code /page}. */
+    public String emailToken(String to, String page) {
+        return ((NotifyConfig.LogEmailSender) email).recent().stream()
+                .filter(m -> m[0].equalsIgnoreCase(to) && m[2].contains("/" + page + "?token="))
+                .findFirst()
+                .map(m -> m[2].replaceAll("(?s).*/" + page + "\\?token=([A-Za-z0-9_-]+).*", "$1"))
+                .orElseThrow(() -> new AssertionError("no " + page + " email to " + to));
+    }
+
+    /** The 6-digit code from the newest SMS to {@code e164}. */
+    public String smsCode(String e164) {
+        return ((NotifyConfig.LogSmsSender) sms).recent().stream()
+                .filter(m -> m[0].equals(e164))
+                .findFirst()
+                .map(m -> m[1].replaceAll(".*\\b(\\d{6})\\b.*", "$1"))
+                .orElseThrow(() -> new AssertionError("no SMS to " + e164));
     }
 
     public User commuter() {
@@ -35,6 +61,8 @@ public class Fixtures {
         u.setEmail("c" + SEQ.incrementAndGet() + "@test.dev");
         u.setPhoneNumber("0710000000");
         u.setPassword("x");
+        u.setEmailVerifiedAt(java.time.Instant.now());
+        u.setTermsVersion("test-terms-v1");
         return users.save(u);
     }
 
@@ -59,6 +87,8 @@ public class Fixtures {
         d.setPassword("x");
         d.setApprovalStatus(DriverApproval.APPROVED); // vetted
         d.setActive(true); // online, so they can send offers
+        d.setEmailVerifiedAt(java.time.Instant.now());
+        d.setTermsVersion("test-terms-v1");
         return drivers.save(d);
     }
 

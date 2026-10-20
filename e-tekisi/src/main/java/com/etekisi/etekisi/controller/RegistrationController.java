@@ -16,6 +16,7 @@ import com.etekisi.etekisi.repository.StaffUserRepository;
 import com.etekisi.etekisi.repository.UserRepository;
 import com.etekisi.etekisi.security.CurrentUser;
 import com.etekisi.etekisi.security.LoginThrottle;
+import com.etekisi.etekisi.service.AccountSecurityService;
 import com.etekisi.etekisi.web.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -38,6 +39,7 @@ public class RegistrationController {
     private final JwtTokenService jwt;
     private final CurrentUser currentUser;
     private final LoginThrottle throttle;
+    private final AccountSecurityService accountSecurity;
     /** Compared against when the email is unknown, so a miss costs the same as a wrong password. */
     private final String dummyHash;
 
@@ -47,7 +49,8 @@ public class RegistrationController {
                                   BCryptPasswordEncoder passwordEncoder,
                                   JwtTokenService jwt,
                                   CurrentUser currentUser,
-                                  LoginThrottle throttle) {
+                                  LoginThrottle throttle,
+                                  AccountSecurityService accountSecurity) {
         this.userRepository = userRepository;
         this.driverRepository = driverRepository;
         this.staffRepository = staffRepository;
@@ -55,6 +58,7 @@ public class RegistrationController {
         this.jwt = jwt;
         this.currentUser = currentUser;
         this.throttle = throttle;
+        this.accountSecurity = accountSecurity;
         this.dummyHash = passwordEncoder.encode("timing-equaliser-not-a-real-password");
     }
 
@@ -65,13 +69,16 @@ public class RegistrationController {
         if (userRepository.existsByEmailIgnoreCase(req.email())) {
             throw ApiException.conflict("EMAIL_TAKEN", "An account with this email already exists.");
         }
+        accountSecurity.checkPassword(req.password(), req.email(), req.fullName());
         User user = new User();
         user.setFullName(req.fullName());
         user.setEmail(req.email());
         user.setPhoneNumber(req.phoneNumber());
         user.setPassword(passwordEncoder.encode(req.password()));
+        accountSecurity.recordConsent(user, req.acceptTerms(), req.termsVersion());
         User saved = userRepository.save(user);
-        return Map.of("status", "REGISTERED", "userId", saved.getId(), "role", Role.COMMUTER.name());
+        return Map.of("status", "REGISTERED", "userId", saved.getId(), "role", Role.COMMUTER.name(),
+                "verification", accountSecurity.sendInitialVerification(saved));
     }
 
     @PostMapping("/register/driver")
@@ -81,6 +88,7 @@ public class RegistrationController {
         if (driverRepository.existsByEmailIgnoreCase(req.email())) {
             throw ApiException.conflict("EMAIL_TAKEN", "An account with this email already exists.");
         }
+        accountSecurity.checkPassword(req.password(), req.email(), req.fullName());
         Driver driver = new Driver();
         driver.setFullName(req.fullName());
         driver.setEmail(req.email());
@@ -90,9 +98,11 @@ public class RegistrationController {
         driver.setPassword(passwordEncoder.encode(req.password()));
         // New drivers wait for an operator to check their details before they can take trips.
         driver.setApprovalStatus(DriverApproval.PENDING_APPROVAL);
+        accountSecurity.recordConsent(driver, req.acceptTerms(), req.termsVersion());
         Driver saved = driverRepository.save(driver);
         return Map.of("status", "REGISTERED", "userId", saved.getId(), "role", Role.DRIVER.name(),
-                "approvalStatus", saved.getApprovalStatus().name());
+                "approvalStatus", saved.getApprovalStatus().name(),
+                "verification", accountSecurity.sendInitialVerification(saved));
     }
 
     /**
@@ -179,6 +189,7 @@ public class RegistrationController {
     public DriverDto toggleStatus(@PathVariable Long id, @RequestParam boolean active) {
         currentUser.requireSelf(id, Role.DRIVER);
         Driver driver = driverRepository.findById(id).orElseThrow(() -> ApiException.notFound("Driver"));
+        if (active) AccountSecurityService.requireVerified(driver);
         if (active && !driver.isApproved()) {
             throw ApiException.conflict("DRIVER_NOT_APPROVED",
                     driver.getApprovalStatus() == DriverApproval.REJECTED

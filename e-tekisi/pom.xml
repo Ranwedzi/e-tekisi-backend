@@ -60,6 +60,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Verification and password-reset emails (any SMTP provider). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Operational endpoints: /actuator/health, /actuator/prometheus, … -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -15,7 +15,11 @@ public record RegisterCommuterRequest(
         @NotBlank
         @Pattern(regexp = "^[+]?[0-9 ()-]{8,20}$", message = "phoneNumber must be 8-20 digits/+/-/space/parentheses")
         String phoneNumber,
-        @NotBlank @Size(min = 8, max = 200, message = "password must be at least 8 characters") String password
+        @NotBlank @Size(min = 10, max = 200, message = "password must be at least 10 characters") String password,
+        /** Must be true: the person ticked "I accept the terms of use and privacy policy". */
+        Boolean acceptTerms,
+        /** The version shown to them (GET /api/legal); refused if it is no longer current. */
+        @Size(max = 40) String termsVersion
 ) {
     public RegisterCommuterRequest {
         fullName = fullName == null ? null : fullName.trim();

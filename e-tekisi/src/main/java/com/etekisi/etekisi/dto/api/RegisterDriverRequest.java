@@ -20,7 +20,11 @@ public record RegisterDriverRequest(
         @Pattern(regexp = "^[A-Z0-9]{4,10}$", message = "taxiPlate must be 4-10 letters or digits")
         String taxiPlate,
         @NotBlank @Size(max = 50) String licenseNumber,
-        @NotBlank @Size(min = 8, max = 200, message = "password must be at least 8 characters") String password
+        @NotBlank @Size(min = 10, max = 200, message = "password must be at least 10 characters") String password,
+        /** Must be true: the person ticked "I accept the terms of use and privacy policy". */
+        Boolean acceptTerms,
+        /** The version shown to them (GET /api/legal); refused if it is no longer current. */
+        @Size(max = 40) String termsVersion
 ) {
     public RegisterDriverRequest {
         fullName = fullName == null ? null : fullName.trim();

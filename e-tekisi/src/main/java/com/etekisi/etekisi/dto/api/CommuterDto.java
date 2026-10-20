@@ -14,7 +14,9 @@ public record CommuterDto(
         Long id,
         String fullName,
         String email,
-        String phoneNumber
+        String phoneNumber,
+        boolean emailVerified,
+        boolean phoneVerified
 ) {
     public static CommuterDto from(User u) {
         if (u == null) return null;
@@ -22,7 +24,9 @@ public record CommuterDto(
                 u.getId(),
                 u.getFullName(),
                 u.getEmail(),
-                u.getPhoneNumber()
+                u.getPhoneNumber(),
+                u.getEmailVerifiedAt() != null,
+                u.getPhoneVerifiedAt() != null
         );
     }
 }

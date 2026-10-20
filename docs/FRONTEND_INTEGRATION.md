@@ -293,7 +293,28 @@ masked; operators see them in full.
 | GET | `/api/locations/nearby?lat=&lng=&radius=` | any | online drivers within `radius` m of the caller (default 5000, max 10000), as `{lat, lng}` rounded to ~110 m, no driver ids |
 | POST | `/api/agents/safety/panic?bookingId=…` | booking participant or staff | `SafetyAlert` |
 
-### 3.4a Your account (POPIA)
+### 3.4a Sign-up, verification and passwords
+
+Sign-up bodies (`/api/auth/register/commuter|driver`) also need
+`acceptTerms: true` and `termsVersion` (from `GET /api/legal`); passwords are
+10+ characters and not a common password (`400 WEAK_PASSWORD`). The response
+has `verification: {email: SENT|FAILED, phone: SENT|FAILED|UNAVAILABLE}`.
+Until the email **or** phone is verified, booking, top-up, going online,
+offers and queues return `403 ACCOUNT_NOT_VERIFIED`.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/legal` | public | `{version, documents, phoneVerificationAvailable}` |
+| POST | `/api/auth/verify-email` body `{token}` | public | token from the emailed `/verify-email?token=` link |
+| POST | `/api/auth/password/forgot` body `{email, role, channel: EMAIL\|SMS}` | public | always `202`, whether or not the account exists |
+| POST | `/api/auth/password/reset` body `{token, newPassword}` or `{email, role, code, newPassword}` | public | signs out every session of the account |
+| GET | `/api/me/status` | commuter/driver | `{verified, emailVerified, phoneVerified, phoneVerificationAvailable, termsAccepted, currentTermsVersion}` |
+| POST | `/api/me/verification/email` | commuter/driver | resend the link (max 1/min, 5/h → `429`) |
+| POST | `/api/me/verification/phone`, `/api/me/verification/phone/confirm` body `{code}` | commuter/driver | SMS code, 10 min, 5 tries |
+| POST | `/api/me/password` body `{currentPassword, newPassword}` | commuter/driver | signs out every session |
+| POST | `/api/me/terms` body `{version}` | commuter/driver | accept a new version of the terms |
+
+### 3.4b Your account (POPIA)
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|

@@ -32,7 +32,7 @@ class DriverApprovalTest {
         String body = mvc.perform(post("/api/auth/register/driver").contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"fullName":"New Driver","email":"%s","phoneNumber":"0820000777",
-                                 "taxiPlate":"GP777NEW","licenseNumber":"LIC-777","password":"password123"}""".formatted(email)))
+                                 "taxiPlate":"GP777NEW","licenseNumber":"LIC-777","password":"kettle-sunrise-42","acceptTerms":true,"termsVersion":"test-terms-v1"}""".formatted(email)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.approvalStatus").value("PENDING_APPROVAL"))
                 .andReturn().getResponse().getContentAsString();
@@ -44,6 +44,14 @@ class DriverApprovalTest {
         MockMvc mvc = TestAuth.mvc(context);
         String email = "new" + System.nanoTime() + "@test.dev";
         long id = registerDriver(mvc, email);
+
+        // Unverified: can't go online even once approved. Verify with the emailed link.
+        mvc.perform(put("/api/auth/driver/" + id + "/status").param("active", "true").with(as(Role.DRIVER, id)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCOUNT_NOT_VERIFIED"));
+        mvc.perform(post("/api/auth/verify-email").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + fixtures.emailToken(email, "verify-email") + "\"}"))
+                .andExpect(status().isOk());
 
         mvc.perform(put("/api/auth/driver/" + id + "/status").param("active", "true").with(as(Role.DRIVER, id)))
                 .andExpect(status().isConflict())
