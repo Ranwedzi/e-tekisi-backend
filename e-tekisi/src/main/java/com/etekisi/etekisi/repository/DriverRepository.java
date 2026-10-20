@@ -16,6 +16,8 @@ public interface DriverRepository extends JpaRepository<Driver, Long> {
 
     boolean existsByEmailIgnoreCase(String email);
 
+    boolean existsByIdAndDeletedAtIsNotNull(Long id);
+
     /** Operators' review queue, oldest sign-ups first. */
     List<Driver> findTop200ByApprovalStatusOrderByRegisteredAtAsc(DriverApproval status);
 
