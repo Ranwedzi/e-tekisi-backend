@@ -290,7 +290,7 @@ masked; operators see them in full.
 | GET | `/api/queue/status/{rank}` | driver | the SERVING ticket first, then WAITING in order |
 | PUT | `/api/queue/{skip\|serve\|complete}/{ticketId}` | ticket owner | `QueueTicket`; `serve` only for the front of the queue |
 | POST | `/api/locations/update` | driver; body `{lat, lng}` | — |
-| GET | `/api/locations/nearby` | any | drivers seen in the last 5 minutes |
+| GET | `/api/locations/nearby?lat=&lng=&radius=` | any | online drivers within `radius` m of the caller (default 5000, max 10000), as `{lat, lng}` rounded to ~110 m, no driver ids |
 | POST | `/api/agents/safety/panic?bookingId=…` | booking participant or staff | `SafetyAlert` |
 
 ### 3.5 Operator / agent surface
