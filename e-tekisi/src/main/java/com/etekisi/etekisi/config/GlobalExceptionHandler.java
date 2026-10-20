@@ -86,6 +86,25 @@ public class GlobalExceptionHandler {
                 Map.of("code", "MALFORMED_BODY"));
     }
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ProblemDetail onTooLarge(org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        return problem(HttpStatus.PAYLOAD_TOO_LARGE,
+                "File too large",
+                "Files can be up to 5 MB. Take the photo again at a lower resolution.",
+                "https://tekisi.dev/problems/file-too-large",
+                Map.of("code", "FILE_TOO_LARGE"));
+    }
+
+    @ExceptionHandler({org.springframework.web.multipart.support.MissingServletRequestPartException.class,
+                       org.springframework.web.multipart.MultipartException.class})
+    public ProblemDetail onBadUpload(Exception ex) {
+        return problem(HttpStatus.BAD_REQUEST,
+                "Upload incomplete",
+                "Choose a file to upload.",
+                "https://tekisi.dev/problems/upload",
+                Map.of("code", "FILE_REQUIRED"));
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ProblemDetail onTypeMismatch(MethodArgumentTypeMismatchException ex) {
         return problem(HttpStatus.BAD_REQUEST,

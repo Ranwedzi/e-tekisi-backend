@@ -6,6 +6,7 @@ import com.etekisi.etekisi.repository.DriverRepository;
 import com.etekisi.etekisi.repository.UserRepository;
 import com.etekisi.etekisi.repository.WalletRepository;
 import com.etekisi.etekisi.notify.EmailSender;
+import com.etekisi.etekisi.repository.DriverDocumentRepository;
 import com.etekisi.etekisi.notify.NotifyConfig;
 import com.etekisi.etekisi.notify.SmsSender;
 import org.springframework.stereotype.Component;
@@ -25,16 +26,35 @@ public class Fixtures {
     private final BookingRepository bookings;
     private final EmailSender email;
     private final SmsSender sms;
+    private final DriverDocumentRepository documents;
 
     public Fixtures(UserRepository users, DriverRepository drivers,
                     WalletRepository wallets, BookingRepository bookings,
-                    EmailSender email, SmsSender sms) {
+                    EmailSender email, SmsSender sms, DriverDocumentRepository documents) {
         this.users = users;
         this.drivers = drivers;
         this.wallets = wallets;
         this.bookings = bookings;
         this.email = email;
         this.sms = sms;
+        this.documents = documents;
+    }
+
+    /** Accepted licence, PrDP and operating licence rows (no files), as if an operator had checked them. */
+    public void acceptRequiredDocuments(Long driverId) {
+        for (DriverDocument.Type t : new DriverDocument.Type[]{
+                DriverDocument.Type.DRIVERS_LICENCE, DriverDocument.Type.PRDP, DriverDocument.Type.OPERATING_LICENCE}) {
+            DriverDocument d = new DriverDocument();
+            d.setDriverId(driverId);
+            d.setType(t);
+            d.setStatus(DriverDocument.Status.ACCEPTED);
+            d.setFileName(t.name().toLowerCase() + ".pdf");
+            d.setContentType("application/pdf");
+            d.setSizeBytes(1);
+            d.setSha256("0".repeat(64));
+            d.setExpiresOn(java.time.LocalDate.now().plusYears(1));
+            documents.save(d);
+        }
     }
 
     /** The token from the newest email to {@code to} whose link goes to {@code /page}. */
