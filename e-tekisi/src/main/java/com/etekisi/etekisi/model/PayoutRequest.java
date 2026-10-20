@@ -70,4 +70,17 @@ public class PayoutRequest {
 
     /** Staff user who last moved it on. */
     private Long processedBy;
+
+    /** Set when the payment-risk check flagged this payout; approving it then needs an explicit confirmation. */
+    @Column(name = "risk_hold", nullable = false)
+    private boolean riskHold = false;
+
+    @Column(name = "risk_reasons", length = 300)
+    private String riskReasons;
+
+    @Column(name = "risk_cleared_by")
+    private Long riskClearedBy;
+
+    @Column(name = "risk_cleared_at")
+    private Instant riskClearedAt;
 }

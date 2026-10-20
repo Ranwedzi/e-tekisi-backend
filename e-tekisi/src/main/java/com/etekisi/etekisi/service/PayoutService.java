@@ -38,6 +38,7 @@ public class PayoutService {
     private final LedgerService ledger;
     private final PaymentRiskReviewer risk;
     private final NotificationService notifications;
+    private final MoneyLimits limits;
     private final BigDecimal minAmount;
     private final BigDecimal maxAmount;
 
@@ -46,6 +47,7 @@ public class PayoutService {
                          LedgerService ledger,
                          PaymentRiskReviewer risk,
                          NotificationService notifications,
+                         MoneyLimits limits,
                          @Value("${tekisi.payouts.min-amount:20.00}") BigDecimal minAmount,
                          @Value("${tekisi.payouts.max-amount:5000.00}") BigDecimal maxAmount) {
         this.drivers = drivers;
@@ -53,8 +55,14 @@ public class PayoutService {
         this.ledger = ledger;
         this.risk = risk;
         this.notifications = notifications;
+        this.limits = limits;
         this.minAmount = minAmount;
         this.maxAmount = maxAmount;
+    }
+
+    @Transactional(readOnly = true)
+    public MoneyLimits.PayoutRemaining limits(Long driverId) {
+        return limits.payoutRemaining(driverId);
     }
 
     @Transactional(readOnly = true)
@@ -94,16 +102,18 @@ public class PayoutService {
             throw ApiException.conflict("INSUFFICIENT_FUNDS", "Your available balance is too low for this payout.",
                     Map.of("available", balanceBefore));
         }
+        limits.checkPayout(driverId, amount);
 
-        PayoutRequest request = new PayoutRequest();
-        request.setDriverId(driverId);
-        request.setAmount(amount);
-        request.setMethod(method);
-        request.setBankName(bankName.isEmpty() ? null : bankName);
-        request.setAccountNumber(accountNumber.isEmpty() ? null : accountNumber);
-        request.setAccountHolder(accountHolder.isEmpty() ? null : accountHolder);
-        request.setPhoneNumber(phoneNumber.isEmpty() ? null : phoneNumber);
-        request = payouts.save(request);
+        final PayoutRequest request;
+        PayoutRequest draft = new PayoutRequest();
+        draft.setDriverId(driverId);
+        draft.setAmount(amount);
+        draft.setMethod(method);
+        draft.setBankName(bankName.isEmpty() ? null : bankName);
+        draft.setAccountNumber(accountNumber.isEmpty() ? null : accountNumber);
+        draft.setAccountHolder(accountHolder.isEmpty() ? null : accountHolder);
+        draft.setPhoneNumber(phoneNumber.isEmpty() ? null : phoneNumber);
+        request = payouts.save(draft);
 
         driver.setBalance(Money.of(balanceBefore.subtract(amount)));
         ledger.record(driverId, Role.DRIVER, WalletTransaction.Type.PAYOUT,
@@ -111,7 +121,12 @@ public class PayoutService {
 
         int recent = (int) payouts.countByDriverIdAndCreatedAtAfter(driverId, Instant.now().minus(Duration.ofHours(24))) - 1;
         risk.reviewPayout(driverId, request.getId(), amount.doubleValue(), balanceBefore.doubleValue(),
-                driver.getTripsCompleted(), Math.max(recent, 0));
+                driver.getTripsCompleted(), Math.max(recent, 0))
+                .ifPresent(reasons -> {
+                    // Flagged: an operator must confirm they checked it before approving.
+                    request.setRiskHold(true);
+                    request.setRiskReasons(reasons.length() > 300 ? reasons.substring(0, 300) : reasons);
+                });
         return PayoutDto.from(request);
     }
 
@@ -128,10 +143,23 @@ public class PayoutService {
         return list.stream().map(p -> PayoutOpsDto.from(p, byId.get(p.getDriverId()))).toList();
     }
 
+    /**
+     * A payout the risk check held needs {@code acknowledgeRisk}: the operator
+     * confirms they looked at it (who and when is recorded).
+     */
     @Transactional
-    public PayoutOpsDto approve(Long payoutId, Long staffId) {
+    public PayoutOpsDto approve(Long payoutId, Long staffId, boolean acknowledgeRisk) {
         PayoutRequest p = lockPayout(payoutId);
         requireStatus(p, PayoutRequest.PENDING);
+        if (p.isRiskHold() && p.getRiskClearedAt() == null) {
+            if (!acknowledgeRisk) {
+                throw ApiException.conflict("RISK_REVIEW_REQUIRED",
+                        "This payout was held for review (" + p.getRiskReasons() + "). Check it, then approve it confirming you did.",
+                        Map.of("riskReasons", String.valueOf(p.getRiskReasons())));
+            }
+            p.setRiskClearedBy(staffId);
+            p.setRiskClearedAt(Instant.now());
+        }
         p.setStatus(PayoutRequest.APPROVED);
         stamp(p, staffId);
         notifications.send(p.getDriverId(), Role.DRIVER, "Your payout of R" + p.getAmount() + " was approved and will be paid soon.");

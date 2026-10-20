@@ -73,15 +73,20 @@ public final class ApiRecords {
     public record PayoutOpsDto(Long id, Long driverId, String driverName, String driverPhone,
                                BigDecimal amount, String method, String bankName, String accountNumber,
                                String accountHolder, String phoneNumber, String status, String createdAt,
-                               String processedAt, Long processedBy, String reference, String rejectionReason) {
+                               String processedAt, Long processedBy, String reference, String rejectionReason,
+                               boolean riskHold, String riskReasons, Long riskClearedBy) {
         public static PayoutOpsDto from(PayoutRequest p, com.etekisi.etekisi.model.Driver d) {
             return new PayoutOpsDto(p.getId(), p.getDriverId(),
                     d != null ? d.getFullName() : null, d != null ? d.getPhoneNumber() : null,
                     p.getAmount(), p.getMethod(), p.getBankName(), p.getAccountNumber(), p.getAccountHolder(),
                     p.getPhoneNumber(), p.getStatus(), str(p.getCreatedAt()), str(p.getProcessedAt()),
-                    p.getProcessedBy(), p.getReference(), p.getRejectionReason());
+                    p.getProcessedBy(), p.getReference(), p.getRejectionReason(),
+                    p.isRiskHold(), p.getRiskReasons(), p.getRiskClearedBy());
         }
     }
+
+    /** Optional body of PUT /api/payouts/{id}/approve. */
+    public record ApprovePayoutRequest(Boolean acknowledgeRisk) {}
 
     public record MarkPaidRequest(@NotBlank @Size(max = 100) String reference) {}
 

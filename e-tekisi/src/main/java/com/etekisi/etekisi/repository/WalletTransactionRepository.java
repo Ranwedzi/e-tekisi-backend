@@ -9,6 +9,11 @@ import java.util.List;
 
 public interface WalletTransactionRepository extends JpaRepository<WalletTransaction, Long> {
 
+    /** Daily limits: this owner's entries of one type since a moment, oldest first. */
+    java.util.List<WalletTransaction> findByOwnerIdAndOwnerRoleAndTypeAndCreatedAtAfterOrderByCreatedAtAsc(
+            Long ownerId, com.etekisi.etekisi.model.Role ownerRole, WalletTransaction.Type type, java.time.Instant since);
+
+
     long countByOwnerIdAndOwnerRoleAndTypeAndCreatedAtAfter(Long ownerId, Role ownerRole,
                                                              WalletTransaction.Type type, Instant since);
 

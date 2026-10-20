@@ -276,6 +276,22 @@ Bank account numbers, account holders and payout phone numbers are encrypted
 at rest (AES-GCM, key `DATA_ENCRYPTION_KEY`). Drivers only ever see them
 masked; operators see them in full.
 
+### 3.3a Money limits and risk holds
+
+Top-ups and payouts are refused with `409 LIMIT_REACHED` (and `limit`,
+`limitValue`, `remaining`, `resetsAt`) past these rolling-24-hour limits
+(env vars in brackets): top-ups R2,000 a day, R500 for accounts with fewer
+than 3 trips (`LIMIT_TOPUP_DAILY`, `LIMIT_TOPUP_DAILY_NEW`), 5 a day
+(`LIMIT_TOPUP_COUNT`), wallet balance at most R3,000 (`LIMIT_WALLET_MAX`);
+payouts R5,000 a day (`LIMIT_PAYOUT_DAILY`, rejected ones excluded), 3
+requests a day (`LIMIT_PAYOUT_COUNT`).
+
+| Method | Path | Auth | Returns |
+|---|---|---|---|
+| GET | `/api/wallet/{userId}/limits` | commuter | `{topUpToday, topUpsLeftToday, walletRoom, dailyTopUpLimit, maxWalletBalance}` |
+| GET | `/api/payouts/driver/{driverId}/limits` | driver | `{payoutToday, payoutsLeftToday, dailyPayoutLimit}` |
+| PUT | `/api/payouts/{id}/approve` body `{acknowledgeRisk?}` | staff | a payout with `riskHold: true` (flagged by the payment-risk check; `riskReasons`) needs `acknowledgeRisk: true`, else `409 RISK_REVIEW_REQUIRED`; `riskClearedBy` records who |
+
 ### 3.4 Notifications, chat, queue, locations
 
 | Method | Path | Auth | Returns |

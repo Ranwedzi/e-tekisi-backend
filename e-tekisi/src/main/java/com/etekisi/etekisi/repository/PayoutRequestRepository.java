@@ -16,6 +16,8 @@ public interface PayoutRequestRepository extends JpaRepository<PayoutRequest, Lo
 
     long countByDriverIdAndCreatedAtAfter(Long driverId, Instant since);
 
+    java.util.List<PayoutRequest> findByDriverIdAndCreatedAtAfter(Long driverId, Instant since);
+
     /** Oldest first: the order operators should work through them. */
     List<PayoutRequest> findTop200ByStatusOrderByCreatedAtAsc(String status);
 

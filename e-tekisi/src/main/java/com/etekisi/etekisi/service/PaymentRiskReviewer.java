@@ -14,9 +14,10 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 
 /**
- * Runs the advisory {@link PaymentRiskAgent} for top-ups and payouts and
- * records a PAYMENT_RISK_HOLD insight when it flags one. Never blocks the
- * money movement and never throws: ops triage from the insights feed.
+ * Runs the {@link PaymentRiskAgent} for top-ups and payouts and records a
+ * PAYMENT_RISK_HOLD insight when it flags one. Never throws. For top-ups it
+ * is advisory (the hard limits in MoneyLimits apply); a flagged payout is
+ * held until an operator confirms they checked it.
  */
 @Service
 public class PaymentRiskReviewer {
@@ -45,18 +46,31 @@ public class PaymentRiskReviewer {
         }
     }
 
-    public void reviewPayout(Long driverId, Long payoutRequestId, double amount, double balanceBefore,
-                             int priorTrips, int recent24hCount) {
+    /** The reasons, when the agent says to hold the payout for review; empty to let it through. */
+    public java.util.Optional<String> reviewPayout(Long driverId, Long payoutRequestId, double amount, double balanceBefore,
+                                                   int priorTrips, int recent24hCount) {
         PaymentRiskAgent agent = riskAgent.getIfAvailable();
-        if (agent == null) return;
+        if (agent == null) return java.util.Optional.empty();
         try {
             PaymentRiskDecision d = agent.evaluatePayout(payoutRequestId, amount, balanceBefore, priorTrips,
                     recent24hCount, CorrelationContext.getOrCreate());
             recordIfFlagged(d, null, driverId,
                     "Payout flagged payoutRequestId=" + payoutRequestId + " amount=" + amount);
+            if (isHold(d)) {
+                return java.util.Optional.of(d.level() + ": " + String.join(", ", d.metadata().reasonCodes().stream()
+                        .filter(r -> r != com.etekisi.etekisi.agent.dto.ReasonCode.PAYMENT_AMOUNT_NORMAL)
+                        .map(r -> r.name().replace("PAYMENT_", "").replace('_', ' ').toLowerCase()).toList()));
+            }
         } catch (RuntimeException ex) {
+            // The agent failing must not block a payout; operators still approve every one by hand.
             log.warn("agent.payment.payout.eval_failed driverId={} error={}", driverId, ex.getMessage());
         }
+        return java.util.Optional.empty();
+    }
+
+    private static boolean isHold(PaymentRiskDecision d) {
+        return d.action() == PaymentRiskDecision.Action.HOLD_FOR_REVIEW
+                || d.action() == PaymentRiskDecision.Action.REJECT_WITH_REVIEW;
     }
 
     private void recordIfFlagged(PaymentRiskDecision d, Long commuterId, Long driverId, String summary) {
