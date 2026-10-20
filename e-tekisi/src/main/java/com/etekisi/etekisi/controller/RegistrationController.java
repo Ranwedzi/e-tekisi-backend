@@ -17,6 +17,7 @@ import com.etekisi.etekisi.repository.UserRepository;
 import com.etekisi.etekisi.security.CurrentUser;
 import com.etekisi.etekisi.security.LoginThrottle;
 import com.etekisi.etekisi.service.AccountSecurityService;
+import com.etekisi.etekisi.service.StaffMfaService;
 import com.etekisi.etekisi.web.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -40,6 +41,7 @@ public class RegistrationController {
     private final CurrentUser currentUser;
     private final LoginThrottle throttle;
     private final AccountSecurityService accountSecurity;
+    private final StaffMfaService staffMfa;
     /** Compared against when the email is unknown, so a miss costs the same as a wrong password. */
     private final String dummyHash;
 
@@ -50,7 +52,8 @@ public class RegistrationController {
                                   JwtTokenService jwt,
                                   CurrentUser currentUser,
                                   LoginThrottle throttle,
-                                  AccountSecurityService accountSecurity) {
+                                  AccountSecurityService accountSecurity,
+                                  StaffMfaService staffMfa) {
         this.userRepository = userRepository;
         this.driverRepository = driverRepository;
         this.staffRepository = staffRepository;
@@ -59,6 +62,7 @@ public class RegistrationController {
         this.currentUser = currentUser;
         this.throttle = throttle;
         this.accountSecurity = accountSecurity;
+        this.staffMfa = staffMfa;
         this.dummyHash = passwordEncoder.encode("timing-equaliser-not-a-real-password");
     }
 
@@ -137,6 +141,10 @@ public class RegistrationController {
             case OPERATOR, ADMIN -> {
                 StaffUser staff = staffRepository.findByEmailIgnoreCase(email).orElse(null);
                 if (matches(password, staff != null ? staff.getPassword() : null)) {
+                    // With two-step sign-in, the password only earns a challenge for the code
+                    // (and doesn't reset the lockout count: StaffMfaService does that).
+                    Map<String, Object> challenge = staffMfa.challengeFor(staff);
+                    if (challenge != null) return ResponseEntity.ok(challenge);
                     throttle.recordSuccess(accountKey);
                     return ok(staff.getId(), staff.getRole());
                 }
@@ -159,15 +167,7 @@ public class RegistrationController {
     }
 
     private ResponseEntity<Map<String, Object>> ok(Long userId, Role role) {
-        String token = jwt.mint(userId, role.name());
-        Map<String, Object> body = new HashMap<>();
-        body.put("status", "SUCCESS");
-        body.put("userId", userId);
-        body.put("role", role.name());
-        body.put("token", token);
-        body.put("tokenType", "Bearer");
-        body.put("expiresInSeconds", jwt.expirySeconds());
-        return ResponseEntity.ok(body);
+        return ResponseEntity.ok(jwt.loginBody(userId, role.name()));
     }
 
     @GetMapping("/commuter/{id}")
