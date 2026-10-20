@@ -116,6 +116,7 @@ Everything sensitive comes from environment variables; see
 | `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD` | first operator account (signs in at `/login` → "e-Tekisi staff?", lands on `/ops`) |
 | `DATA_ENCRYPTION_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts payout bank details. Required in prod; **back it up**, losing it makes those columns unreadable |
 | `PAYMENTS_SANDBOX_ENABLED` | dev top-ups (false in prod) |
+| `RETENTION_TRIP_GPS_DAYS` (90), `RETENTION_DRIVER_LOCATION_DAYS` (7), `RETENTION_MESSAGES_DAYS` (180), `RETENTION_NOTIFICATIONS_DAYS` (90), `AUDIT_RETENTION_DAYS` (90) | how long personal data is kept; a daily job at 03:30 deletes older rows, 0 turns one off. GPS of trips with a CRITICAL safety alert is kept |
 | `OSM_NOMINATIM_URL`, `OSM_OSRM_URL`, `OSM_OVERPASS_URL` | map services; point at self-hosted instances for production traffic (the public servers allow ~1 request/second, which the app enforces and caches around) |
 
 ## Tests
@@ -135,6 +136,16 @@ skipped otherwise.
 - `docs/FRONTEND_INTEGRATION.md` — API contract for the frontend
 - `docs/DEPLOY.md` — production deployment (`docker-compose.prod.yml` + `deploy/Caddyfile`)
 - `docs/BACKUP_RESTORE.md` — database backups
+
+## Personal data (POPIA)
+
+- Signed-in commuters and drivers can download everything held about them
+  (`GET /api/me/export`, "Download my data" on the profile page) and delete
+  their account (`POST /api/me/delete`). Deletion anonymises the account and
+  keeps trips and ledger rows for the financial record.
+- Location: `/api/locations/nearby` only returns rounded positions near the
+  caller, with no driver ids.
+- Retention: see the `RETENTION_*` settings above.
 
 ## Security notes
 
