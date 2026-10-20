@@ -99,6 +99,8 @@ public class SecurityConfig {
                         ).permitAll()
                         // Operator-only observability endpoints.
                         .requestMatchers("/actuator/**").hasAnyRole("OPERATOR", "ADMIN")
+                        // "Share my trip" links: whoever has the link (an unguessable token) can follow the trip.
+                        .requestMatchers(HttpMethod.GET, "/api/share/*").permitAll()
                         // Panic button: any signed-in trip participant (checked in the controller).
                         .requestMatchers(HttpMethod.POST, "/api/agents/safety/panic").authenticated()
                         // Agent surface — operators only (read-only insight + dispatch).

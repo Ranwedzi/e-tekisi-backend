@@ -292,6 +292,9 @@ masked; operators see them in full.
 | POST | `/api/locations/update` | driver; body `{lat, lng}` | — |
 | GET | `/api/locations/nearby?lat=&lng=&radius=` | any | online drivers within `radius` m of the caller (default 5000, max 10000), as `{lat, lng}` rounded to ~110 m, no driver ids |
 | POST | `/api/agents/safety/panic?bookingId=…` | booking participant or staff | `SafetyAlert` |
+| POST | `/api/bookings/{id}/share` | the trip's commuter, trip ACCEPTED | `{url, token, expiresAt}`; the link is `/share/{token}` on the frontend |
+| DELETE | `/api/bookings/{id}/share` | the trip's commuter | `{stopped}`: every link for the trip stops working |
+| GET | `/api/share/{token}` | public | `{status: IN_PROGRESS\|COMPLETED\|ENDED, commuterFirstName, pickup, destination, expiresAt, driverFirstName, taxiPlate, taxiPosition {lat, lng, updatedAt, stale}}`; driver and position only while in progress; 404 when expired or stopped |
 
 ### 3.4a Sign-up, verification and passwords
 
