@@ -37,13 +37,44 @@ public record BookingDto(
         String driverPhone,
         String taxiPlate,
         String commuterName,
-        String commuterPhone
+        String commuterPhone,
+        Double pickupLat,
+        Double pickupLng,
+        Double destinationLat,
+        Double destinationLng,
+        String arrivedAt,
+        String startedAt,
+        String completedAt,
+        /** The driver's average stars (offers and trips), so a commuter can choose. */
+        Double driverRating,
+        Integer driverRatingCount,
+        /** The commuter's average stars, shown to drivers (on open requests too, without the name). */
+        Double commuterRating,
+        Integer commuterRatingCount,
+        /** Whether each side has rated this (completed) trip yet. */
+        boolean commuterRated,
+        boolean driverRated
 ) {
     public static BookingDto from(Booking b) {
-        return from(b, null, null, false);
+        return from(b, null, null, false, false, false);
     }
 
     public static BookingDto from(Booking b, Driver driver, User commuter, boolean includePhones) {
+        return from(b, driver, commuter, includePhones, false, false);
+    }
+
+    /** An open request as drivers see it: the commuter's rating, but not who they are. */
+    public static BookingDto forOpenRequest(Booking b, User commuter) {
+        BookingDto d = from(b);
+        if (commuter == null) return d;
+        return new BookingDto(d.id(), d.commuterId(), d.driverId(), d.pickupLocation(), d.destination(), d.scheduledTime(),
+                d.fare(), d.tip(), d.status(), d.offerExpiresAt(), null, null, null, null, null,
+                d.pickupLat(), d.pickupLng(), d.destinationLat(), d.destinationLng(), d.arrivedAt(), d.startedAt(),
+                d.completedAt(), null, null, commuter.averageRating(), commuter.getRatingCount(), false, false);
+    }
+
+    public static BookingDto from(Booking b, Driver driver, User commuter, boolean includePhones,
+                                  boolean commuterRated, boolean driverRated) {
         if (b == null) return null;
         return new BookingDto(
                 b.getId(),
@@ -55,12 +86,23 @@ public record BookingDto(
                 b.getFare(),
                 b.getTip(),
                 b.getStatus() != null ? b.getStatus().name() : null,
-                b.getOfferExpiresAt() != null ? b.getOfferExpiresAt().toString() : null,
+                str(b.getOfferExpiresAt()),
                 driver != null ? driver.getFullName() : null,
                 driver != null && includePhones ? driver.getPhoneNumber() : null,
                 driver != null ? driver.getTaxiPlate() : null,
                 commuter != null ? commuter.getFullName() : null,
-                commuter != null && includePhones ? commuter.getPhoneNumber() : null
+                commuter != null && includePhones ? commuter.getPhoneNumber() : null,
+                b.getPickupLat(), b.getPickupLng(), b.getDestinationLat(), b.getDestinationLng(),
+                str(b.getArrivedAt()), str(b.getStartedAt()), str(b.getCompletedAt()),
+                driver != null ? driver.averageRating() : null,
+                driver != null ? driver.getRatingCount() : null,
+                commuter != null ? commuter.averageRating() : null,
+                commuter != null ? commuter.getRatingCount() : null,
+                commuterRated, driverRated
         );
+    }
+
+    private static String str(java.time.Instant i) {
+        return i != null ? i.toString() : null;
     }
 }

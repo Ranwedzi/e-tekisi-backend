@@ -10,6 +10,7 @@ import com.etekisi.etekisi.model.*;
 import com.etekisi.etekisi.repository.BookingDeclineRepository;
 import com.etekisi.etekisi.repository.BookingRepository;
 import com.etekisi.etekisi.repository.DriverRepository;
+import com.etekisi.etekisi.repository.TripRatingRepository;
 import com.etekisi.etekisi.repository.UserRepository;
 import com.etekisi.etekisi.web.ApiException;
 import org.slf4j.Logger;
@@ -64,6 +65,7 @@ public class BookingService {
     private final TransactionTemplate tx;
     private final BigDecimal maxFare;
     private final Duration offerTtl;
+    private final TripRatingRepository ratings;
 
     public BookingService(BookingRepository bookings,
                           DriverRepository drivers,
@@ -75,6 +77,7 @@ public class BookingService {
                           AgentEventPublisher events,
                           SloMetrics slo,
                           PlatformTransactionManager txManager,
+                          TripRatingRepository ratings,
                           @Value("${tekisi.booking.max-fare:1000.00}") BigDecimal maxFare,
                           @Value("${tekisi.booking.offer-ttl-seconds:120}") long offerTtlSeconds) {
         this.bookings = bookings;
@@ -90,6 +93,7 @@ public class BookingService {
         this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.maxFare = maxFare;
         this.offerTtl = Duration.ofSeconds(offerTtlSeconds);
+        this.ratings = ratings;
     }
 
     // ----------------------------------------------------------------- reads --
@@ -107,7 +111,10 @@ public class BookingService {
     /** Open requests a driver can still offer on: no contact details. */
     @Transactional(readOnly = true)
     public List<BookingDto> pendingFor(Long driverId) {
-        return bookings.findPendingNotDeclinedBy(driverId).stream().map(BookingDto::from).toList();
+        List<Booking> open = bookings.findPendingNotDeclinedBy(driverId);
+        Map<Long, User> commuters = users.findAllById(open.stream().map(Booking::getCommuterId).collect(Collectors.toSet()))
+                .stream().collect(Collectors.toMap(User::getId, Function.identity()));
+        return open.stream().map(b -> BookingDto.forOpenRequest(b, commuters.get(b.getCommuterId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -142,6 +149,14 @@ public class BookingService {
         b.setDestination(req.destination().trim());
         b.setScheduledTime(req.scheduledTime());
         b.setTip(req.tip() != null ? Money.of(req.tip()) : null);
+        if ((req.pickupLat() == null) != (req.pickupLng() == null)
+                || (req.destinationLat() == null) != (req.destinationLng() == null)) {
+            throw ApiException.badRequest("INVALID_COORDINATES", "Send latitude and longitude together.");
+        }
+        b.setPickupLat(req.pickupLat());
+        b.setPickupLng(req.pickupLng());
+        b.setDestinationLat(req.destinationLat());
+        b.setDestinationLng(req.destinationLng());
         b.setStatus(BookingStatus.PENDING);
         Booking saved = bookings.save(b);
 
@@ -271,6 +286,9 @@ public class BookingService {
             throw ApiException.conflict("BOOKING_NOT_ACCEPTED", "Only an accepted trip can be completed.");
         }
         b.setStatus(BookingStatus.COMPLETED);
+        Instant now = Instant.now();
+        if (b.getStartedAt() == null) b.setStartedAt(now);
+        b.setCompletedAt(now);
 
         Driver driver = drivers.findByIdForUpdate(driverId).orElseThrow(() -> ApiException.notFound("Driver"));
         BigDecimal earned = Money.of(b.total());
@@ -311,6 +329,11 @@ public class BookingService {
         }
         if (b.getStatus() == BookingStatus.COMPLETED) {
             throw ApiException.conflict("BOOKING_COMPLETED", "A completed trip can't be cancelled.");
+        }
+
+        if (b.getStartedAt() != null && !callerRole.isStaff()) {
+            throw ApiException.conflict("TRIP_STARTED",
+                    "This trip has started and can't be cancelled. Finish it, or contact support if something is wrong.");
         }
 
         if (b.getStatus() == BookingStatus.OFFERED && callerRole == Role.DRIVER) {
@@ -423,9 +446,14 @@ public class BookingService {
                 .collect(Collectors.toMap(Driver::getId, Function.identity()));
         Map<Long, User> commuterMap = users.findAllById(commuterIds).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
+        Set<Long> completed = list.stream().filter(b -> b.getStatus() == BookingStatus.COMPLETED)
+                .map(Booking::getId).collect(Collectors.toSet());
+        Set<String> rated = completed.isEmpty() ? Set.of() : ratings.findByBookingIdIn(completed).stream()
+                .map(r -> r.getBookingId() + ":" + r.getRaterRole()).collect(Collectors.toSet());
         return list.stream()
                 .map(b -> sharesNames(b)
-                        ? BookingDto.from(b, driverMap.get(b.getDriverId()), commuterMap.get(b.getCommuterId()), sharesPhones(b))
+                        ? BookingDto.from(b, driverMap.get(b.getDriverId()), commuterMap.get(b.getCommuterId()), sharesPhones(b),
+                                rated.contains(b.getId() + ":COMMUTER"), rated.contains(b.getId() + ":DRIVER"))
                         : BookingDto.from(b))
                 .toList();
     }

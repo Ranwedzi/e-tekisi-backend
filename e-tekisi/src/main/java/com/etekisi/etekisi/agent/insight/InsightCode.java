@@ -28,6 +28,8 @@ public enum InsightCode {
     TRIP_COMPLETED_OK,
     /** Trip cancelled / rejected — surfaced as a wastage signal candidate. */
     WASTAGE_CANCELLATION,
+    /** A commuter gave a driver 1 or 2 stars, or the driver's average fell low. */
+    DRIVER_LOW_RATING,
     /** Payment-risk agent flagged a wallet/payout action for review. Phase 3.6. */
     PAYMENT_RISK_HOLD,
     /** Autonomous dispatch executed by the agent under operator policy. Phase 3.3. */
