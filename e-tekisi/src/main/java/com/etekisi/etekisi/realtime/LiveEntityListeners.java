@@ -33,7 +33,8 @@ public final class LiveEntityListeners {
         void created(Booking b) {
             changed(b);
             PushService p = push.getIfAvailable();
-            if (p != null && b.getStatus() == BookingStatus.PENDING) p.newRequestAfterCommit(b.getId());
+            // Scheduled trips are pushed when they are released (BookingService), not at booking.
+            if (p != null && b.getStatus() == BookingStatus.PENDING && b.getReleasedAt() != null) p.newRequestAfterCommit(b.getId());
         }
 
         @PostUpdate

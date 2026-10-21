@@ -118,6 +118,9 @@ public class Fixtures {
         b.setPickupLocation("Park Station");
         b.setDestination("Bara");
         b.setStatus(BookingStatus.PENDING);
+        // As BookingService.create does for a trip leaving now.
+        b.setReleasedAt(java.time.Instant.now());
+        b.setRequestExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofMinutes(15)));
         return bookings.save(b);
     }
 

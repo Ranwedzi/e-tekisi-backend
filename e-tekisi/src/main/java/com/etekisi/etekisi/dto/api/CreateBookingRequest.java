@@ -8,6 +8,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 /** The commuter id is taken from the token, never from this body. */
 public record CreateBookingRequest(
@@ -19,10 +20,13 @@ public record CreateBookingRequest(
         @DecimalMin("-90") @DecimalMax("90") Double pickupLat,
         @DecimalMin("-180") @DecimalMax("180") Double pickupLng,
         @DecimalMin("-90") @DecimalMax("90") Double destinationLat,
-        @DecimalMin("-180") @DecimalMax("180") Double destinationLng
+        @DecimalMin("-180") @DecimalMax("180") Double destinationLng,
+        // When to leave, ISO-8601 with a zone ("2026-10-22T05:30:00Z"). Null = now. The older
+        // scheduledTime (local South African time, "2026-10-22T07:30") is still accepted.
+        Instant scheduledAt
 ) {
     /** The old four-field form (no coordinates). */
     public CreateBookingRequest(String pickupLocation, String destination, String scheduledTime, BigDecimal tip) {
-        this(pickupLocation, destination, scheduledTime, tip, null, null, null, null);
+        this(pickupLocation, destination, scheduledTime, tip, null, null, null, null, null);
     }
 }
