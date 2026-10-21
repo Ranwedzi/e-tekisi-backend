@@ -31,12 +31,12 @@ public class OpsDriverController {
     public record DriverReviewDto(Long id, String fullName, String email, String phoneNumber,
                                   String taxiPlate, String licenseNumber, String approvalStatus,
                                   String approvalNote, String registeredAt, String approvalDecidedAt,
-                                  Long approvalDecidedBy, int tripsCompleted) {
+                                  Long approvalDecidedBy, int tripsCompleted, Double rating, int ratingCount) {
         static DriverReviewDto from(Driver d) {
             return new DriverReviewDto(d.getId(), d.getFullName(), d.getEmail(), d.getPhoneNumber(),
                     d.getTaxiPlate(), d.getLicenseNumber(), d.getApprovalStatus().name(), d.getApprovalNote(),
                     str(d.getRegisteredAt()), str(d.getApprovalDecidedAt()), d.getApprovalDecidedBy(),
-                    d.getTripsCompleted() == null ? 0 : d.getTripsCompleted());
+                    d.getTripsCompleted() == null ? 0 : d.getTripsCompleted(), d.averageRating(), d.getRatingCount());
         }
 
         private static String str(Instant i) {

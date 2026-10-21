@@ -46,4 +46,16 @@ public class User implements AccountHolder {
 
     @Column(name = "credentials_changed_at")
     private Instant credentialsChangedAt;
+
+    /** Ratings received: running totals (see TripRating). */
+    @Column(name = "rating_sum", nullable = false)
+    private int ratingSum = 0;
+
+    @Column(name = "rating_count", nullable = false)
+    private int ratingCount = 0;
+
+    /** Average stars to one decimal, or null before the first rating. */
+    public Double averageRating() {
+        return ratingCount == 0 ? null : Math.round(ratingSum * 10.0 / ratingCount) / 10.0;
+    }
 }

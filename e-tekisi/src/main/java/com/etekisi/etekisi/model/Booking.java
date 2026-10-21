@@ -44,6 +44,24 @@ public class Booking {
     @Column(name = "offer_expires_at")
     private Instant offerExpiresAt;
 
+    /** Where the commuter is picked up and going, when known (map pin or geocoded). */
+    @Column(name = "pickup_lat")
+    private Double pickupLat;
+    @Column(name = "pickup_lng")
+    private Double pickupLng;
+    @Column(name = "destination_lat")
+    private Double destinationLat;
+    @Column(name = "destination_lng")
+    private Double destinationLng;
+
+    /** Trip progress: the driver is at the pick-up, the commuter is on board, the trip is done. */
+    @Column(name = "arrived_at")
+    private Instant arrivedAt;
+    @Column(name = "started_at")
+    private Instant startedAt;
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
     /** Fare plus tip; zero when neither is set. */
     public BigDecimal total() {
         BigDecimal f = fare != null ? fare : BigDecimal.ZERO;

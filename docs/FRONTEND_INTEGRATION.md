@@ -276,6 +276,22 @@ Bank account numbers, account holders and payout phone numbers are encrypted
 at rest (AES-GCM, key `DATA_ENCRYPTION_KEY`). Drivers only ever see them
 masked; operators see them in full.
 
+### 3.2b Trip progress and ratings
+
+`POST /api/bookings/create` accepts optional `pickupLat/pickupLng` and
+`destinationLat/destinationLng` (in pairs, else `400 INVALID_COORDINATES`).
+Bookings now carry those, `arrivedAt`, `startedAt`, `completedAt`,
+`driverRating`/`driverRatingCount` (on offers and trips),
+`commuterRating`/`commuterRatingCount` (also on open requests, without the
+name) and `commuterRated`/`driverRated`.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| PUT | `/api/bookings/{id}/arrived` | assigned driver, ACCEPTED | commuter notified "Your driver has arrived ... Look for {plate}" |
+| PUT | `/api/bookings/{id}/start` | assigned driver, ACCEPTED | commuter on board; from now `cancel` returns `409 TRIP_STARTED` (staff excepted) |
+| GET | `/api/bookings/{id}/driver-position` | the trip's commuter, ACCEPTED | `{lat, lng, updatedAt, stale}` |
+| POST | `/api/bookings/{id}/rating` body `{stars 1-5, comment?}` | commuter or driver of a COMPLETED trip, within 7 days, once (`409 ALREADY_RATED`) | `{rateeAverage, rateeCount}`; 1-2 stars for a driver raises a `DRIVER_LOW_RATING` insight |
+
 ### 3.2a Live updates
 
 `GET /api/events` (any signed-in user, `text/event-stream`) streams
