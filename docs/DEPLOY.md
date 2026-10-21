@@ -33,6 +33,11 @@ frontend. Backend, frontend and Postgres are not published on the host.
    driver send it an offer. `tekisi_push_sent_total` / `tekisi_push_failed_total`
    in Prometheus show delivery.
 
+7. **Maps:** the public OpenStreetMap servers are fine for a small pilot
+   but forbid production traffic. Before opening up, run your own with
+   `docker-compose.maps.yml` (`docs/MAPS.md`) and pass both `-f` files from
+   then on.
+
 **Updating:** `git pull` in both repos, then re-run step 3. Flyway migrates
 the database on start; the backend refuses to start if the entities and
 schema disagree. Take a backup first (`docs/BACKUP_RESTORE.md`).

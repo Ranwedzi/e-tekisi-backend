@@ -87,6 +87,12 @@ services:
       RETENTION_DRIVER_LOCATION_DAYS: ${RETENTION_DRIVER_LOCATION_DAYS:-7}
       RETENTION_MESSAGES_DAYS: ${RETENTION_MESSAGES_DAYS:-180}
       RETENTION_NOTIFICATIONS_DAYS: ${RETENTION_NOTIFICATIONS_DAYS:-90}
+      # Map services. Unset = the public OpenStreetMap servers (light use
+      # only); docker-compose.maps.yml runs your own (docs/MAPS.md).
+      OSM_NOMINATIM_URL: ${OSM_NOMINATIM_URL:-https://nominatim.openstreetmap.org}
+      OSM_OSRM_URL: ${OSM_OSRM_URL:-https://router.project-osrm.org}
+      OSM_OVERPASS_URL: ${OSM_OVERPASS_URL:-https://overpass-api.de/api/interpreter}
+      OSM_USER_AGENT: ${OSM_USER_AGENT:-e-tekisi/1.0 (https://${DOMAIN})}
       # External routing API for ETAs; the heuristic is used when it's off.
       ROUTING_API_ENABLED: ${ROUTING_API_ENABLED:-false}
       ROUTING_API_BASE_URL: ${ROUTING_API_BASE_URL:-}

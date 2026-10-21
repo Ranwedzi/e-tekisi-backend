@@ -1,0 +1,147 @@
+# Self-hosted map services for production traffic: the public OpenStreetMap
+# servers forbid it. Runs alongside the production stack, on its network:
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.maps.yml --env-file .env.prod up -d
+#
+# and set in .env.prod (docs/MAPS.md):
+#   OSM_NOMINATIM_URL=http://nominatim:8080
+#   OSM_OSRM_URL=http://osrm:5000
+#   OSM_OVERPASS_URL=http://overpass/api/interpreter
+#   MAP_TILE_URL=/tiles/{z}/{x}/{y}.png        (Caddy serves /tiles/* from "tiles")
+#
+# The first start downloads the South Africa extract (~400 MB, includes
+# Lesotho and Eswatini) and imports it into each service: a few hours and
+# ~100 GB of disk in total (tiles are the slowest). Every service only imports
+# when its volume is empty, so restarts are quick. docs/MAPS.md has sizing,
+# updates and how to check each service.
+
+x-pbf-url: &pbf-url ${MAPS_PBF_URL:-https://download.geofabrik.de/africa/south-africa-latest.osm.pbf}
+# No trailing slash: Overpass adds its own and Geofabrik 404s on "//".
+x-updates-url: &updates-url ${MAPS_UPDATES_URL:-https://download.geofabrik.de/africa/south-africa-updates}
+
+services:
+  # The extract, downloaded once into a shared volume.
+  maps-download:
+    image: curlimages/curl:8.10.1
+    user: "0:0"
+    environment:
+      PBF_URL: *pbf-url
+    volumes:
+      - maps_pbf:/pbf
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        test -s /pbf/region.osm.pbf && echo "extract already downloaded" && exit 0;
+        curl -fL --retry 5 --retry-delay 10 -o /pbf/region.osm.pbf.part "$$PBF_URL"
+        && mv /pbf/region.osm.pbf.part /pbf/region.osm.pbf
+    restart: "no"
+
+  # Routing (driving directions, trip routes). Prepared once (MLD), then served.
+  osrm-prepare:
+    image: ghcr.io/project-osrm/osrm-backend:v26.9.0-debian
+    depends_on:
+      maps-download:
+        condition: service_completed_successfully
+    volumes:
+      - maps_pbf:/pbf:ro
+      - osrm_data:/data
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        test -s /data/region.osrm.mldgr && echo "routing data ready" && exit 0;
+        cp /pbf/region.osm.pbf /data/region.osm.pbf
+        && osrm-extract -p /opt/car.lua /data/region.osm.pbf
+        && osrm-partition /data/region.osrm
+        && osrm-customize /data/region.osrm
+        && rm /data/region.osm.pbf
+    restart: "no"
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v26.9.0-debian
+    restart: unless-stopped
+    depends_on:
+      osrm-prepare:
+        condition: service_completed_successfully
+    volumes:
+      - osrm_data:/data:ro
+    command: ["osrm-routed", "--algorithm", "mld", "--max-table-size", "1000", "/data/region.osrm"]
+
+  # Geocoding (addresses and place names to coordinates). Imports on first
+  # start, then follows Geofabrik's daily updates.
+  nominatim:
+    image: mediagis/nominatim:5.3.2
+    restart: unless-stopped
+    depends_on:
+      maps-download:
+        condition: service_completed_successfully
+    shm_size: 1g
+    environment:
+      PBF_PATH: /pbf/region.osm.pbf
+      REPLICATION_URL: *updates-url
+      UPDATE_MODE: continuous
+      IMPORT_STYLE: full
+      IMPORT_WIKIPEDIA: "false"
+      THREADS: ${MAPS_THREADS:-4}
+      NOMINATIM_PASSWORD: ${NOMINATIM_PASSWORD:?set NOMINATIM_PASSWORD (any long random string)}
+    volumes:
+      - maps_pbf:/pbf:ro
+      - nominatim_data:/var/lib/postgresql/16/main
+
+  # Overpass (taxi-rank discovery). Indexes the extract on first start, then
+  # applies updates. Rank discovery only uses "around" queries, so the slow
+  # area index is skipped.
+  overpass:
+    image: wiktorn/overpass-api:v0.7.62.8
+    restart: unless-stopped
+    depends_on:
+      maps-download:
+        condition: service_completed_successfully
+    environment:
+      OVERPASS_MODE: init
+      OVERPASS_META: "no"
+      OVERPASS_PLANET_URL: file:///pbf/region.osm.pbf
+      OVERPASS_PLANET_PREPROCESS: >-
+        mv /db/planet.osm.bz2 /db/planet.osm.pbf
+        && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf
+        && rm /db/planet.osm.pbf
+      OVERPASS_DIFF_URL: *updates-url
+      OVERPASS_USE_AREAS: "false"
+      OVERPASS_STOP_AFTER_INIT: "false"
+      OVERPASS_COMPRESSION: gz
+    volumes:
+      - maps_pbf:/pbf:ro
+      - overpass_db:/db
+    # A named volume keeps the image's /db mode (700, the overpass user's home),
+    # which locks out the query workers (nginx user): open it up first.
+    entrypoint: ["sh", "-c", "chmod 755 /db && exec /docker-entrypoint.sh /app/docker-entrypoint.sh"]
+
+  # Map tiles (the street map behind every screen). Rendered on demand and
+  # cached in osm_tiles; Caddy serves them at /tiles/{z}/{x}/{y}.png.
+  tiles:
+    image: overv/openstreetmap-tile-server:2.3.0
+    restart: unless-stopped
+    depends_on:
+      maps-download:
+        condition: service_completed_successfully
+    shm_size: 512m
+    environment:
+      THREADS: ${MAPS_THREADS:-4}
+    volumes:
+      - maps_pbf:/pbf:ro
+      - osm_tiles_db:/data/database
+      - osm_tiles:/data/tiles
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        if [ ! -f /data/database/planet-import-complete ]; then
+          ln -sf /pbf/region.osm.pbf /data/region.osm.pbf && /run.sh import || exit 1;
+        fi;
+        exec /run.sh run
+
+volumes:
+  maps_pbf:
+  osrm_data:
+  nominatim_data:
+  overpass_db:
+  osm_tiles_db:
+  osm_tiles:
