@@ -28,7 +28,7 @@ public class AccountStateTokenValidator implements OAuth2TokenValidator<Jwt> {
     private static final OAuth2Error DELETED =
             new OAuth2Error("invalid_token", "This account has been deleted.", null);
     private static final OAuth2Error STALE =
-            new OAuth2Error("invalid_token", "The password was changed; please sign in again.", null);
+            new OAuth2Error("invalid_token", "This session was ended (password change or sign-out everywhere); please sign in again.", null);
 
     private final UserRepository users;
     private final DriverRepository drivers;

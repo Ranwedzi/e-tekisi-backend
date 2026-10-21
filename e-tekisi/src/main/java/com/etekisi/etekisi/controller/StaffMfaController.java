@@ -1,6 +1,6 @@
 package com.etekisi.etekisi.controller;
 
-import com.etekisi.etekisi.config.JwtTokenService;
+import com.etekisi.etekisi.session.SessionService;
 import com.etekisi.etekisi.model.Role;
 import com.etekisi.etekisi.model.StaffUser;
 import com.etekisi.etekisi.security.CurrentUser;
@@ -8,6 +8,7 @@ import com.etekisi.etekisi.security.LoginThrottle;
 import com.etekisi.etekisi.service.StaffMfaService;
 import com.etekisi.etekisi.web.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -33,22 +34,23 @@ public class StaffMfaController {
     public record CodeRequest(@NotBlank @Size(max = 20) String code) {}
 
     private final StaffMfaService mfa;
-    private final JwtTokenService jwt;
+    private final SessionService sessions;
     private final CurrentUser currentUser;
     private final LoginThrottle throttle;
 
-    public StaffMfaController(StaffMfaService mfa, JwtTokenService jwt, CurrentUser currentUser, LoginThrottle throttle) {
+    public StaffMfaController(StaffMfaService mfa, SessionService sessions, CurrentUser currentUser, LoginThrottle throttle) {
         this.mfa = mfa;
-        this.jwt = jwt;
+        this.sessions = sessions;
         this.currentUser = currentUser;
         this.throttle = throttle;
     }
 
     @PostMapping("/api/auth/mfa/verify")
-    public Map<String, Object> verify(@Valid @RequestBody ChallengeCodeRequest body, HttpServletRequest http) {
+    public Map<String, Object> verify(@Valid @RequestBody ChallengeCodeRequest body, HttpServletRequest http,
+                                      HttpServletResponse response) {
         throttle.checkIp(http.getRemoteAddr());
         StaffUser s = mfa.verifyLogin(body.mfaToken(), body.code());
-        return jwt.loginBody(s.getId(), s.getRole().name());
+        return sessions.signIn(s.getId(), s.getRole(), http, response);
     }
 
     @PostMapping("/api/auth/mfa/setup")
@@ -59,10 +61,11 @@ public class StaffMfaController {
 
     /** Finishes first-time setup and signs in. The recovery codes are shown once. */
     @PostMapping("/api/auth/mfa/enable")
-    public Map<String, Object> enableWithChallenge(@Valid @RequestBody ChallengeCodeRequest body, HttpServletRequest http) {
+    public Map<String, Object> enableWithChallenge(@Valid @RequestBody ChallengeCodeRequest body, HttpServletRequest http,
+                                                   HttpServletResponse response) {
         throttle.checkIp(http.getRemoteAddr());
         Map.Entry<StaffUser, List<String>> done = mfa.enableWithChallenge(body.mfaToken(), body.code());
-        Map<String, Object> out = jwt.loginBody(done.getKey().getId(), done.getKey().getRole().name());
+        Map<String, Object> out = sessions.signIn(done.getKey().getId(), done.getKey().getRole(), http, response);
         out.put("recoveryCodes", done.getValue());
         return out;
     }
