@@ -129,7 +129,7 @@ Everything sensitive comes from environment variables; see
 | `LOGIN_IP_REQUESTS_PER_MINUTE` (60) | per-IP limit on sign-in/sign-up/reset; account lockout after 5 wrong passwords is separate |
 | `SAFETY_ALERT_WEBHOOK`, `SAFETY_ALERT_WEBHOOK_FORMAT`, `SAFETY_ALERT_WEBHOOK_SECRET` | pages on-call for panic-button alerts (generic JSON or PagerDuty) |
 | `METRICS_USERNAME`, `METRICS_PASSWORD` | HTTP Basic for the Prometheus scraper on `/actuator/prometheus` |
-| `OSM_NOMINATIM_URL`, `OSM_OSRM_URL`, `OSM_OVERPASS_URL` | map services; point at self-hosted instances for production traffic (the public servers allow ~1 request/second, which the app enforces and caches around) |
+| `OSM_NOMINATIM_URL`, `OSM_OSRM_URL`, `OSM_OVERPASS_URL` | map services; point at self-hosted instances for production traffic (`docker-compose.maps.yml`, `docs/MAPS.md`). The public servers allow ~1 request/second, which the app enforces (for them only) and caches around |
 
 ## Tests
 

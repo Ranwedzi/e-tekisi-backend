@@ -28,9 +28,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li><b>Configurable base URLs</b> so production can point at self-hosted
  *       instances: the public servers are for light use only.</li>
- *   <li><b>At most one request per second per service</b>, as the public
- *       servers' usage policies require. A caller that would have to wait
- *       too long gets 503 instead of piling up threads.</li>
+ *   <li><b>At most one request per second to the public servers</b>, as
+ *       their usage policies require. A caller that would have to wait too
+ *       long gets 503 instead of piling up threads. Self-hosted instances
+ *       (docker-compose.maps.yml) aren't limited.</li>
  *   <li><b>Response caching</b>, so repeated lookups (the same rank, the same
  *       trip every 5 s of polling) don't hit the upstream at all.</li>
  * </ul>
@@ -55,6 +56,8 @@ public class OsmGateway {
     private final String overpassUrl;
     private final String userAgent;
     private final SharedState state;
+    /** The services pointed at the public OpenStreetMap servers, which allow about 1 request/second. */
+    private final java.util.Set<Upstream> publicServers = java.util.EnumSet.noneOf(Upstream.class);
 
     private final Map<Upstream, MinIntervalLimiter> limiters = Map.of(
             Upstream.NOMINATIM, new MinIntervalLimiter(Duration.ofSeconds(1)),
@@ -75,6 +78,26 @@ public class OsmGateway {
         this.osrmUrl = stripSlash(osrmUrl);
         this.overpassUrl = overpassUrl;
         this.userAgent = userAgent;
+        if (isPublicServer(nominatimUrl)) publicServers.add(Upstream.NOMINATIM);
+        if (isPublicServer(osrmUrl)) publicServers.add(Upstream.OSRM);
+        if (isPublicServer(overpassUrl)) publicServers.add(Upstream.OVERPASS);
+        log.info("osm.services nominatim={} osrm={} overpass={} rateLimited={}",
+                this.nominatimUrl, this.osrmUrl, this.overpassUrl, publicServers);
+    }
+
+    static boolean isPublicServer(String url) {
+        String host;
+        try {
+            host = URI.create(url).getHost();
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+        if (host == null) return true;
+        host = host.toLowerCase(Locale.ROOT);
+        return host.equals("openstreetmap.org") || host.endsWith(".openstreetmap.org")
+                || host.equals("router.project-osrm.org")
+                || host.equals("overpass-api.de") || host.endsWith(".overpass-api.de")
+                || host.endsWith(".kumi.systems") || host.endsWith(".openstreetmap.fr");
     }
 
     /** Nominatim search, first match only. */
@@ -152,7 +175,8 @@ public class OsmGateway {
     }
 
     private String send(Upstream upstream, HttpRequest.Builder request) {
-        boolean slot = state.shared() ? acquireSharedSlot(upstream) : limiters.get(upstream).acquire(MAX_QUEUE_WAIT);
+        boolean slot = !publicServers.contains(upstream)
+                || (state.shared() ? acquireSharedSlot(upstream) : limiters.get(upstream).acquire(MAX_QUEUE_WAIT));
         if (!slot) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "UPSTREAM_BUSY",
                     "Map service is busy. Try again in a moment.", null);
