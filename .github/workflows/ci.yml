@@ -81,13 +81,23 @@ jobs:
         working-directory: e-tekisi
     # Blocking: a dependency with a known CVSS >= 7 fails the build. Vetted
     # false positives go in e-tekisi/dependency-check-suppressions.xml with a
-    # reason. Set the NVD_API_KEY secret (free from nvd.nist.gov), or the
-    # database download is very slow.
+    # reason. Needs the NVD_API_KEY secret (free from
+    # https://nvd.nist.gov/developers/request-an-api-key): without it NIST
+    # refuses the database download, so the check is skipped with a warning.
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
+      - name: Warn when the NVD API key is missing
+        if: env.NVD_API_KEY == ''
+        working-directory: .
+        run: echo "::warning title=Dependency check skipped::Add the NVD_API_KEY repository secret (free from nvd.nist.gov) to scan dependencies for known vulnerabilities."
+
       - name: Checkout
+        if: env.NVD_API_KEY != ''
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
+        if: env.NVD_API_KEY != ''
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -95,6 +105,7 @@ jobs:
           cache: maven
 
       - name: Cache the vulnerability database
+        if: env.NVD_API_KEY != ''
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
@@ -102,8 +113,7 @@ jobs:
           restore-keys: owasp-db-
 
       - name: Run OWASP dependency-check
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        if: env.NVD_API_KEY != ''
         run: >-
           ./mvnw -B -ntp org.owasp:dependency-check-maven:check
           -DfailBuildOnCVSS=7
@@ -112,7 +122,7 @@ jobs:
           -Dformats=HTML,JSON
 
       - name: Upload the report
-        if: always()
+        if: always() && env.NVD_API_KEY != ''
         uses: actions/upload-artifact@v4
         with:
           name: dependency-check-report
