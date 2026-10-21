@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -10,7 +11,8 @@ import java.time.Instant;
 @Entity
 @EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Bookings.class)
 @Table(name = "bookings", schema = "commuter_schema")
-@Data
+@Getter
+@Setter
 public class Booking {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

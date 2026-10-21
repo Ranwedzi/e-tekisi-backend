@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.agent.idempotency;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -23,7 +24,8 @@ import java.time.Instant;
     ),
     indexes = @Index(name = "idx_idempotency_keys_expires", columnList = "expires_at")
 )
-@Data
+@Getter
+@Setter
 public class IdempotencyKey {
 
     public static final String IN_PROGRESS = "IN_PROGRESS";

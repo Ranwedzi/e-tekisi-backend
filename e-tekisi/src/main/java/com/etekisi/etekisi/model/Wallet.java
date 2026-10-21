@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 
@@ -9,7 +10,8 @@ import java.math.BigDecimal;
 @Entity
 @Table(name = "wallets", schema = "commuter_schema",
        uniqueConstraints = @UniqueConstraint(name = "uq_wallets_user_role", columnNames = {"user_id", "role"}))
-@Data
+@Getter
+@Setter
 public class Wallet {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

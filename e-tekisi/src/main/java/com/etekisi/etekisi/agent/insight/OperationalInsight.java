@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.agent.insight;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -26,7 +27,8 @@ import java.time.Instant;
         @Index(name = "idx_op_insights_severity_created", columnList = "severity,createdAt")
     }
 )
-@Data
+@Getter
+@Setter
 public class OperationalInsight {
 
     public enum Type { ANOMALY, METRIC, ALERT }

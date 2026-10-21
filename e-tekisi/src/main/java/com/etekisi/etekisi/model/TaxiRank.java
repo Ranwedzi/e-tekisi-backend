@@ -1,11 +1,13 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "taxi_ranks", schema = "driver_schema")
-@Data
+@Getter
+@Setter
 public class TaxiRank {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -1,12 +1,14 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 /** Operator / admin account. Seeded at startup by StaffBootstrap; there is no public sign-up. */
 @Entity
 @Table(name = "staff_users", schema = "agent_schema")
-@Data
+@Getter
+@Setter
 public class StaffUser {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

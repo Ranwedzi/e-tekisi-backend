@@ -1,14 +1,16 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
 /** A "share my trip" link. Only the hash of its token is stored. */
 @Entity
 @Table(name = "trip_shares", schema = "commuter_schema")
-@Data
+@Getter
+@Setter
 public class TripShare {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -10,7 +11,8 @@ import java.time.LocalDate;
 @Entity
 @EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Documents.class)
 @Table(name = "driver_documents", schema = "driver_schema")
-@Data
+@Getter
+@Setter
 public class DriverDocument {
 
     public enum Type { DRIVERS_LICENCE, PRDP, OPERATING_LICENCE, ROADWORTHY, VEHICLE_PHOTO, ID_DOCUMENT, OTHER }

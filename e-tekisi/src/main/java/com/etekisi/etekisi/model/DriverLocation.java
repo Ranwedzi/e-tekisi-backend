@@ -1,12 +1,14 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "driver_locations", schema = "driver_schema")
-@Data
+@Getter
+@Setter
 public class DriverLocation {
     @Id
     private Long driverId;

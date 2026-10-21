@@ -1,14 +1,16 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
 /** A commuter account. API input uses RegisterCommuterRequest; API output uses CommuterDto. */
 @Entity
 @Table(name = "users", schema = "commuter_schema")
-@Data
+@Getter
+@Setter
 public class User implements AccountHolder {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

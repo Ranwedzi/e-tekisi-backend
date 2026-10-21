@@ -2,7 +2,8 @@ package com.etekisi.etekisi.model;
 
 import com.etekisi.etekisi.security.EncryptedStringConverter;
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -21,7 +22,8 @@ import java.time.Instant;
 @Entity
 @EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Payouts.class)
 @Table(name = "payout_requests", schema = "driver_schema")
-@Data
+@Getter
+@Setter
 public class PayoutRequest {
 
     public static final String PENDING = "PENDING";

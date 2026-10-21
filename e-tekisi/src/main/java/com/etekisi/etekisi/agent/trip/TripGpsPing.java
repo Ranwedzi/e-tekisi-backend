@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.agent.trip;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -23,7 +24,8 @@ import java.time.Instant;
         @Index(name = "idx_trip_gps_booking_recorded", columnList = "bookingId,recordedAt")
     }
 )
-@Data
+@Getter
+@Setter
 public class TripGpsPing {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
