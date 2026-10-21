@@ -18,8 +18,8 @@ import java.util.Map;
  * operators. Called from {@code RegistrationController.login}. Tokens carry
  * a single {@code role} claim (consumed by {@link
  * SecurityConfig#jwtAuthenticationConverter()}) plus the userId in
- * {@code sub}. Deliberately simple — no refresh tokens yet; rotation can be
- * layered in later without a breaking change.
+ * {@code sub}. Browsers get theirs in a cookie with a refresh token
+ * ({@code session.SessionService}); API clients get a Bearer token in the body.
  */
 @Service
 public class JwtTokenService {
@@ -37,11 +37,15 @@ public class JwtTokenService {
     }
 
     public String mint(Long userId, String role) {
+        return mint(userId, role, Duration.ofMinutes(expiryMinutes));
+    }
+
+    public String mint(Long userId, String role, Duration ttl) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(issuer)
                 .issuedAt(now)
-                .expiresAt(now.plus(Duration.ofMinutes(expiryMinutes)))
+                .expiresAt(now.plus(ttl))
                 .subject(String.valueOf(userId))
                 .claim("role", role)
                 .build();

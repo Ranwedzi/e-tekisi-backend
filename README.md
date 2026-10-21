@@ -112,7 +112,8 @@ Everything sensitive comes from environment variables; see
 | Variable | Purpose |
 |---|---|
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Postgres connection |
-| `JWT_SIGNING_SECRET` (≥ 32 bytes), `JWT_ISSUER`, `JWT_EXPIRY_MINUTES` | tokens |
+| `JWT_SIGNING_SECRET` (≥ 32 bytes), `JWT_ISSUER`, `JWT_EXPIRY_MINUTES` | tokens; `JWT_EXPIRY_MINUTES` is for API clients using Bearer tokens |
+| `SESSION_ACCESS_MINUTES` (15), `SESSION_REFRESH_DAYS` (30), `SESSION_MAX_DAYS` (90), `SESSION_STAFF_HOURS` (12), `SESSION_SECURE_COOKIES` (true) | web-app sessions in httpOnly cookies: access-cookie lifetime, how long a session lasts unused and at most, staff sessions. Secure cookies need https (localhost is fine) |
 | `CORS_ALLOWED_ORIGINS` | frontend origins, comma-separated |
 | `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD` | first operator account (signs in at `/login` → "e-Tekisi staff?", lands on `/ops`) |
 | `DATA_ENCRYPTION_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts payout bank details. Required in prod; **back it up**, losing it makes those columns unreadable |

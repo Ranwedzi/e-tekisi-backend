@@ -1,6 +1,5 @@
 package com.etekisi.etekisi.controller;
 
-import com.etekisi.etekisi.config.JwtTokenService;
 import com.etekisi.etekisi.dto.api.CommuterDto;
 import com.etekisi.etekisi.dto.api.DriverDto;
 import com.etekisi.etekisi.dto.api.LoginRequest;
@@ -20,6 +19,8 @@ import com.etekisi.etekisi.service.AccountSecurityService;
 import com.etekisi.etekisi.service.StaffMfaService;
 import com.etekisi.etekisi.web.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import com.etekisi.etekisi.session.SessionService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -37,7 +38,7 @@ public class RegistrationController {
     private final DriverRepository driverRepository;
     private final StaffUserRepository staffRepository;
     private final BCryptPasswordEncoder passwordEncoder;
-    private final JwtTokenService jwt;
+    private final SessionService sessions;
     private final CurrentUser currentUser;
     private final LoginThrottle throttle;
     private final AccountSecurityService accountSecurity;
@@ -49,7 +50,7 @@ public class RegistrationController {
                                   DriverRepository driverRepository,
                                   StaffUserRepository staffRepository,
                                   BCryptPasswordEncoder passwordEncoder,
-                                  JwtTokenService jwt,
+                                  SessionService sessions,
                                   CurrentUser currentUser,
                                   LoginThrottle throttle,
                                   AccountSecurityService accountSecurity,
@@ -58,7 +59,7 @@ public class RegistrationController {
         this.driverRepository = driverRepository;
         this.staffRepository = staffRepository;
         this.passwordEncoder = passwordEncoder;
-        this.jwt = jwt;
+        this.sessions = sessions;
         this.currentUser = currentUser;
         this.throttle = throttle;
         this.accountSecurity = accountSecurity;
@@ -116,7 +117,8 @@ public class RegistrationController {
      * Repeated failures lock the account for a while (429), see LoginThrottle.
      */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest creds, HttpServletRequest http) {
+    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest creds, HttpServletRequest http,
+                                                     HttpServletResponse response) {
         String email = creds.email().trim();
         String password = creds.password();
         String accountKey = LoginThrottle.accountKey(creds.role().name(), email);
@@ -128,14 +130,14 @@ public class RegistrationController {
                 User user = userRepository.findByEmailIgnoreCase(email).orElse(null);
                 if (matches(password, user != null ? user.getPassword() : null)) {
                     throttle.recordSuccess(accountKey);
-                    return ok(user.getId(), Role.COMMUTER);
+                    return ok(user.getId(), Role.COMMUTER, http, response);
                 }
             }
             case DRIVER -> {
                 Driver driver = driverRepository.findByEmailIgnoreCase(email).orElse(null);
                 if (matches(password, driver != null ? driver.getPassword() : null)) {
                     throttle.recordSuccess(accountKey);
-                    return ok(driver.getId(), Role.DRIVER);
+                    return ok(driver.getId(), Role.DRIVER, http, response);
                 }
             }
             case OPERATOR, ADMIN -> {
@@ -146,7 +148,7 @@ public class RegistrationController {
                     Map<String, Object> challenge = staffMfa.challengeFor(staff);
                     if (challenge != null) return ResponseEntity.ok(challenge);
                     throttle.recordSuccess(accountKey);
-                    return ok(staff.getId(), staff.getRole());
+                    return ok(staff.getId(), staff.getRole(), http, response);
                 }
             }
         }
@@ -166,8 +168,8 @@ public class RegistrationController {
         return passwordEncoder.matches(raw, hash);
     }
 
-    private ResponseEntity<Map<String, Object>> ok(Long userId, Role role) {
-        return ResponseEntity.ok(jwt.loginBody(userId, role.name()));
+    private ResponseEntity<Map<String, Object>> ok(Long userId, Role role, HttpServletRequest req, HttpServletResponse res) {
+        return ResponseEntity.ok(sessions.signIn(userId, role, req, res));
     }
 
     @GetMapping("/commuter/{id}")

@@ -129,6 +129,20 @@ the frontend had been developed against it and never sent the token).
   `senderId`) are ignored. Commuter and driver ids come from separate
   tables, so the same number can be both; the role is what tells them apart.
 
+**Browser sessions are cookies** (`session.SessionService`). Sign-in with
+`X-Session: cookie` sets two httpOnly, Secure, SameSite=Strict cookies: a
+15-minute access token (`__Host-tekisi_at`, sent with every call) and a
+refresh token (`__Secure-tekisi_rt`, sent only to `/api/auth/session/*`).
+Call with `credentials: "include"`; on a 401, `POST
+/api/auth/session/refresh` once and retry (the frontend's `apiFetch` does).
+Each refresh replaces the refresh token; a replaced one used again (after a
+20-second grace for two tabs) ends the whole session, so a copied cookie is
+useless once the real browser refreshes. A session lasts 30 days unused, 90
+at most, 12 hours for staff. Password changes, resets, account deletion and
+"sign out everywhere" end every session. Cookie-authenticated writes must
+send `X-Requested-With` (403 `CSRF_HEADER_MISSING` otherwise). API clients
+keep using `Authorization: Bearer`.
+
 CORS already accepts `http://localhost:3000`, `:3001`, `:5173` by
 default. Add your dev origin to `tekisi.cors.allowed-origins` (or env
 `CORS_ALLOWED_ORIGINS`) if it differs.
@@ -217,7 +231,11 @@ JSON is the most common source of bugs in this kind of project.
 |---|---|---|---|
 | POST | `/api/auth/register/commuter` | `{fullName, email, phoneNumber, password}` (password ≥ 8) | `{status, userId, role}`; 409 `EMAIL_TAKEN` |
 | POST | `/api/auth/register/driver` | as above + `taxiPlate`, `licenseNumber` (plate is upper-cased, spaces/dashes removed) | `{status, userId, role, approvalStatus:"PENDING_APPROVAL"}`; 409 `EMAIL_TAKEN`. The driver can't go online, offer or queue until an operator approves them |
-| POST | `/api/auth/login` | `{email, password, role}` (role: COMMUTER, DRIVER, OPERATOR, ADMIN) | `{status, userId, role, token, tokenType, expiresInSeconds}` on 200; `{status:"FAIL", message}` on 401; 429 `TOO_MANY_ATTEMPTS` with `retryAfterSeconds` after 5 wrong passwords (15-minute lock) or more than 20 auth requests a minute from one IP |
+| POST | `/api/auth/login` | `{email, password, role}` (role: COMMUTER, DRIVER, OPERATOR, ADMIN) | With header `X-Session: cookie` (the web app): httpOnly session cookies and `{status, userId, role, expiresInSeconds, sessionExpiresInSeconds}`. Without it (API clients): `{status, userId, role, token, tokenType, expiresInSeconds}`. Either way on 200; `{status:"FAIL", message}` on 401; 429 `TOO_MANY_ATTEMPTS` with `retryAfterSeconds` after 5 wrong passwords (15-minute lock) or more than 20 auth requests a minute from one IP |
+| POST | `/api/auth/session/refresh` | — (refresh cookie) | new cookies and `{userId, role, expiresInSeconds, sessionExpiresInSeconds}`; 401 `SESSION_ENDED` |
+| POST | `/api/auth/session/logout` | — (refresh cookie) | ends this browser's session and clears the cookies |
+| GET | `/api/me/sessions` | — | `[{device, signedInAt, lastActiveAt}]`: where the account is signed in |
+| POST | `/api/me/sessions/revoke-all` | — | signs out every device, this one included |
 | GET | `/api/auth/commuter/{id}` | — (self) | `CommuterDto` |
 | GET | `/api/auth/driver/{id}` | — (self) | `DriverDto` (`active` is the online flag) |
 | PUT | `/api/auth/driver/{id}/status?active=true\|false` | — (self) | `DriverDto`. Going online needs an approved account: 409 `DRIVER_NOT_APPROVED` otherwise |
