@@ -32,6 +32,18 @@ public class Booking {
     @Column(length = 50)
     private String scheduledTime;
 
+    /** When the commuter wants to leave; null = as soon as possible. */
+    @Column(name = "scheduled_at")
+    private Instant scheduledAt;
+
+    /** When drivers could first see the request; null while a scheduled trip waits to be released. */
+    @Column(name = "released_at")
+    private Instant releasedAt;
+
+    /** A PENDING request still unanswered at this time becomes EXPIRED. */
+    @Column(name = "request_expires_at")
+    private Instant requestExpiresAt;
+
     @Column(precision = 12, scale = 2)
     private BigDecimal fare;
 

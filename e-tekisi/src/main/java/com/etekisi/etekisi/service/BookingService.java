@@ -15,7 +15,9 @@ import com.etekisi.etekisi.repository.UserRepository;
 import com.etekisi.etekisi.web.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import com.etekisi.etekisi.push.PushService;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.access.AccessDeniedException;
@@ -28,6 +30,10 @@ import org.springframework.transaction.TransactionDefinition;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -43,7 +49,12 @@ import java.util.stream.Collectors;
  *      +-- commuter declines, driver withdraws, or the offer expires
  *
  *   cancel: PENDING/OFFERED -> CANCELLED (no money), ACCEPTED -> CANCELLED (commuter refunded)
+ *   PENDING nobody took within request-ttl-minutes -> EXPIRED (no money)
  * </pre>
+ *
+ * Scheduled trips ({@code scheduledAt}) stay hidden from drivers until
+ * {@code schedule-release-minutes} before departure, and expire
+ * request-ttl-minutes after the departure time if nobody takes them.
  *
  * The commuter is never charged without saying yes to the exact amount.
  */
@@ -66,6 +77,15 @@ public class BookingService {
     private final BigDecimal maxFare;
     private final Duration offerTtl;
     private final TripRatingRepository ratings;
+    private final ObjectProvider<PushService> push;
+    private final Duration requestTtl;
+    private final Duration releaseBefore;
+    private final Duration minLead;
+    private final Duration maxAhead;
+    private final Duration reopenGrace;
+
+    /** Old scheduledTime values are local times typed into a form in South Africa. */
+    static final ZoneId LOCAL_ZONE = ZoneId.of("Africa/Johannesburg");
 
     public BookingService(BookingRepository bookings,
                           DriverRepository drivers,
@@ -79,7 +99,12 @@ public class BookingService {
                           PlatformTransactionManager txManager,
                           TripRatingRepository ratings,
                           @Value("${tekisi.booking.max-fare:1000.00}") BigDecimal maxFare,
-                          @Value("${tekisi.booking.offer-ttl-seconds:120}") long offerTtlSeconds) {
+                          @Value("${tekisi.booking.offer-ttl-seconds:120}") long offerTtlSeconds,
+                          ObjectProvider<PushService> push,
+                          @Value("${tekisi.booking.request-ttl-minutes:15}") long requestTtlMinutes,
+                          @Value("${tekisi.booking.schedule-release-minutes:30}") long releaseMinutes,
+                          @Value("${tekisi.booking.schedule-min-lead-minutes:15}") long minLeadMinutes,
+                          @Value("${tekisi.booking.schedule-max-days:14}") long maxDays) {
         this.bookings = bookings;
         this.drivers = drivers;
         this.users = users;
@@ -94,6 +119,13 @@ public class BookingService {
         this.maxFare = maxFare;
         this.offerTtl = Duration.ofSeconds(offerTtlSeconds);
         this.ratings = ratings;
+        this.push = push;
+        this.requestTtl = Duration.ofMinutes(requestTtlMinutes);
+        this.releaseBefore = Duration.ofMinutes(releaseMinutes);
+        this.minLead = Duration.ofMinutes(minLeadMinutes);
+        this.maxAhead = Duration.ofDays(maxDays);
+        // After a lapsed or declined offer the commuter gets at least this long for another one.
+        this.reopenGrace = Duration.ofMinutes(Math.min(5, requestTtlMinutes));
     }
 
     // ----------------------------------------------------------------- reads --
@@ -111,7 +143,7 @@ public class BookingService {
     /** Open requests a driver can still offer on: no contact details. */
     @Transactional(readOnly = true)
     public List<BookingDto> pendingFor(Long driverId) {
-        List<Booking> open = bookings.findPendingNotDeclinedBy(driverId);
+        List<Booking> open = bookings.findPendingNotDeclinedBy(driverId, Instant.now());
         Map<Long, User> commuters = users.findAllById(open.stream().map(Booking::getCommuterId).collect(Collectors.toSet()))
                 .stream().collect(Collectors.toMap(User::getId, Function.identity()));
         return open.stream().map(b -> BookingDto.forOpenRequest(b, commuters.get(b.getCommuterId()))).toList();
@@ -147,7 +179,16 @@ public class BookingService {
         b.setCommuterId(commuterId);
         b.setPickupLocation(req.pickupLocation().trim());
         b.setDestination(req.destination().trim());
-        b.setScheduledTime(req.scheduledTime());
+        Instant now = Instant.now();
+        Instant departure = departure(req, now);
+        if (departure != null) {
+            b.setScheduledAt(departure);
+            b.setScheduledTime(LocalDateTime.ofInstant(departure, LOCAL_ZONE).truncatedTo(ChronoUnit.MINUTES).toString());
+        }
+        // A trip leaving soon is shown to drivers straight away; a later one shortly before departure.
+        boolean releaseNow = departure == null || !departure.minus(releaseBefore).isAfter(now);
+        b.setReleasedAt(releaseNow ? now : null);
+        b.setRequestExpiresAt((departure == null ? now : departure).plus(requestTtl));
         b.setTip(req.tip() != null ? Money.of(req.tip()) : null);
         if ((req.pickupLat() == null) != (req.pickupLng() == null)
                 || (req.destinationLat() == null) != (req.destinationLng() == null)) {
@@ -178,9 +219,13 @@ public class BookingService {
         BigDecimal fare = Money.requireAmount(requestedFare, null, maxFare, "fare");
 
         expireIfStaleCommitted(bookingId);
+        expireRequestCommitted(bookingId);
         Booking b = lockBooking(bookingId);
         if (b.getStatus() != BookingStatus.PENDING) {
             throw ApiException.conflict("BOOKING_NOT_PENDING", "This booking is no longer available.");
+        }
+        if (b.getReleasedAt() == null) {
+            throw ApiException.conflict("NOT_YET_RELEASED", "This trip is scheduled for later; it opens shortly before departure.");
         }
         Driver driver = drivers.findById(driverId).orElseThrow(() -> ApiException.notFound("Driver"));
         AccountSecurityService.requireVerified(driver);
@@ -387,6 +432,82 @@ public class BookingService {
         }
     }
 
+    /**
+     * Shows scheduled trips to drivers when their time comes, and expires
+     * requests nobody took. Each booking is handled in its own transaction.
+     */
+    @SchedulerLock(name = "request-timers", lockAtMostFor = "PT2M", lockAtLeastFor = "PT5S")
+    @Scheduled(fixedDelayString = "${tekisi.booking.request-timer-check-ms:30000}")
+    public void releaseAndExpireRequests() {
+        Instant now = Instant.now();
+        for (Booking due : bookings.findByStatusAndReleasedAtIsNullAndScheduledAtBefore(BookingStatus.PENDING, now.plus(releaseBefore))) {
+            try {
+                releaseCommitted(due.getId());
+            } catch (RuntimeException e) {
+                log.warn("booking.release_failed bookingId={} error={}", due.getId(), e.getMessage());
+            }
+        }
+        for (Booking stale : bookings.findByStatusAndRequestExpiresAtBefore(BookingStatus.PENDING, now)) {
+            try {
+                expireRequestCommitted(stale.getId());
+            } catch (RuntimeException e) {
+                log.warn("booking.request.expire_failed bookingId={} error={}", stale.getId(), e.getMessage());
+            }
+        }
+    }
+
+    private void releaseCommitted(Long bookingId) {
+        tx.executeWithoutResult(status -> bookings.findByIdForUpdate(bookingId).ifPresent(b -> {
+            if (b.getStatus() != BookingStatus.PENDING || b.getReleasedAt() != null) return;
+            b.setReleasedAt(Instant.now());
+            String at = LocalDateTime.ofInstant(b.getScheduledAt(), LOCAL_ZONE).toLocalTime().truncatedTo(ChronoUnit.MINUTES).toString();
+            notifications.send(b.getCommuterId(), Role.COMMUTER,
+                    "We're finding a driver for your " + at + " trip to " + b.getDestination() + ".");
+            PushService p = push.getIfAvailable();
+            if (p != null) p.newRequestAfterCommit(b.getId());
+            log.info("booking.released bookingId={} scheduledAt={}", b.getId(), b.getScheduledAt());
+        }));
+    }
+
+    /** True if it expired (now or earlier); call before taking the booking lock, like expireIfStaleCommitted. */
+    private boolean expireRequestCommitted(Long bookingId) {
+        Boolean expired = tx.execute(status -> bookings.findByIdForUpdate(bookingId).map(b -> {
+            if (b.getStatus() == BookingStatus.EXPIRED) return true;
+            if (b.getStatus() != BookingStatus.PENDING || b.getRequestExpiresAt() == null
+                    || b.getRequestExpiresAt().isAfter(Instant.now())) {
+                return false;
+            }
+            b.setStatus(BookingStatus.EXPIRED);
+            notifications.send(b.getCommuterId(), Role.COMMUTER,
+                    "No driver took your request from " + b.getPickupLocation() + " to " + b.getDestination()
+                            + ". Nothing was charged. Try again, or add a tip to make it stand out.");
+            log.info("booking.request.expired bookingId={}", b.getId());
+            return true;
+        }).orElse(false));
+        return Boolean.TRUE.equals(expired);
+    }
+
+    /** When to leave, from scheduledAt or the older local scheduledTime; null = now. 400 if out of range. */
+    private Instant departure(CreateBookingRequest req, Instant now) {
+        Instant at = req.scheduledAt();
+        if (at == null && req.scheduledTime() != null && !req.scheduledTime().isBlank()) {
+            try {
+                at = LocalDateTime.parse(req.scheduledTime().trim()).atZone(LOCAL_ZONE).toInstant();
+            } catch (DateTimeParseException e) {
+                throw ApiException.badRequest("INVALID_SCHEDULE", "Send the departure time as a date and time.");
+            }
+        }
+        if (at == null) return null;
+        if (at.isBefore(now.plus(minLead))) {
+            throw ApiException.badRequest("SCHEDULE_TOO_SOON",
+                    "Choose a time at least " + minLead.toMinutes() + " minutes from now, or request a taxi now.");
+        }
+        if (at.isAfter(now.plus(maxAhead))) {
+            throw ApiException.badRequest("SCHEDULE_TOO_FAR", "Trips can be booked up to " + maxAhead.toDays() + " days ahead.");
+        }
+        return at;
+    }
+
     // --------------------------------------------------------------- helpers --
 
     private Booking lockBooking(Long bookingId) {
@@ -420,11 +541,15 @@ public class BookingService {
                 "A fare offer for your trip to " + b.getDestination() + " expired. We're still looking for a driver.");
     }
 
-    private static void reopen(Booking b) {
+    private void reopen(Booking b) {
         b.setStatus(BookingStatus.PENDING);
         b.setDriverId(null);
         b.setFare(null);
         b.setOfferExpiresAt(null);
+        Instant atLeast = Instant.now().plus(reopenGrace);
+        if (b.getRequestExpiresAt() == null || b.getRequestExpiresAt().isBefore(atLeast)) {
+            b.setRequestExpiresAt(atLeast);
+        }
     }
 
     private static boolean isParticipant(Booking b, Long callerId, Role callerRole) {

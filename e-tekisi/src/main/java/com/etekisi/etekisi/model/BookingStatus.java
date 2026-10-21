@@ -9,6 +9,7 @@ package com.etekisi.etekisi.model;
  *      +-- commuter declines / driver withdraws / offer expires
  *
  *   PENDING, OFFERED or ACCEPTED --cancel--> CANCELLED   (ACCEPTED -> CANCELLED refunds the commuter)
+ *   PENDING --no driver took it in time--> EXPIRED      (nothing was charged)
  * </pre>
  */
 public enum BookingStatus {
@@ -16,5 +17,6 @@ public enum BookingStatus {
     OFFERED,
     ACCEPTED,
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    EXPIRED
 }

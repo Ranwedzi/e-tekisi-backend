@@ -17,6 +17,7 @@ import java.math.BigDecimal;
  * <ul>
  *   <li>OFFERED: names and the taxi plate, so the commuter can decide.</li>
  *   <li>ACCEPTED / COMPLETED: phone numbers too.</li>
+ *   <li>Scheduled trips carry {@code scheduledAt}; {@code releasedAt} is null until drivers can see them.</li>
  * </ul>
  * Otherwise these fields are null.
  *
@@ -53,7 +54,13 @@ public record BookingDto(
         Integer commuterRatingCount,
         /** Whether each side has rated this (completed) trip yet. */
         boolean commuterRated,
-        boolean driverRated
+        boolean driverRated,
+        /** When the commuter wants to leave (ISO-8601); null = now. */
+        String scheduledAt,
+        /** When drivers could first see it; null while a scheduled trip waits to be released. */
+        String releasedAt,
+        /** A request still unanswered then expires (status EXPIRED). */
+        String requestExpiresAt
 ) {
     public static BookingDto from(Booking b) {
         return from(b, null, null, false, false, false);
@@ -70,7 +77,8 @@ public record BookingDto(
         return new BookingDto(d.id(), d.commuterId(), d.driverId(), d.pickupLocation(), d.destination(), d.scheduledTime(),
                 d.fare(), d.tip(), d.status(), d.offerExpiresAt(), null, null, null, null, null,
                 d.pickupLat(), d.pickupLng(), d.destinationLat(), d.destinationLng(), d.arrivedAt(), d.startedAt(),
-                d.completedAt(), null, null, commuter.averageRating(), commuter.getRatingCount(), false, false);
+                d.completedAt(), null, null, commuter.averageRating(), commuter.getRatingCount(), false, false,
+                d.scheduledAt(), d.releasedAt(), d.requestExpiresAt());
     }
 
     public static BookingDto from(Booking b, Driver driver, User commuter, boolean includePhones,
@@ -98,7 +106,8 @@ public record BookingDto(
                 driver != null ? driver.getRatingCount() : null,
                 commuter != null ? commuter.averageRating() : null,
                 commuter != null ? commuter.getRatingCount() : null,
-                commuterRated, driverRated
+                commuterRated, driverRated,
+                str(b.getScheduledAt()), str(b.getReleasedAt()), str(b.getRequestExpiresAt())
         );
     }
 

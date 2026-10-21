@@ -162,7 +162,7 @@ public class PushService {
         if (!vapid.enabled() || bookingId == null) return;
         afterCommit(() -> {
             Booking b = bookings.getObject().findById(bookingId).orElse(null);
-            if (b == null || b.getStatus() != BookingStatus.PENDING || b.getPickupLat() == null) return;
+            if (b == null || b.getStatus() != BookingStatus.PENDING || b.getReleasedAt() == null || b.getPickupLat() == null) return;
             List<DriverLocation> recent = locations.getObject().findByLastUpdatedAfter(LocalDateTime.now().minusMinutes(10));
             Map<Long, DriverLocation> near = new HashMap<>();
             for (DriverLocation l : recent) {

@@ -294,6 +294,23 @@ Bank account numbers, account holders and payout phone numbers are encrypted
 at rest (AES-GCM, key `DATA_ENCRYPTION_KEY`). Drivers only ever see them
 masked; operators see them in full.
 
+### 3.2c Request expiry and scheduled trips
+
+- A request nobody takes expires: `requestExpiresAt` (15 minutes after it
+  opens; a lapsed or declined offer gives at least 5 more) turns a `PENDING`
+  booking into `EXPIRED`. Nothing was charged; the commuter gets a
+  notification. Offers on it return 409 `BOOKING_NOT_PENDING`.
+- `POST /api/bookings/create` takes `scheduledAt` (ISO-8601 with a zone),
+  15 minutes to 14 days ahead (400 `SCHEDULE_TOO_SOON` / `SCHEDULE_TOO_FAR`).
+  The older `scheduledTime` (local South African time) still works.
+- A scheduled trip has `releasedAt: null` until 30 minutes before
+  departure: drivers don't see it, and offers return 409 `NOT_YET_RELEASED`.
+  On release the commuter is told and nearby drivers get a push. It expires
+  15 minutes after the departure time if nobody takes it.
+- Settings: `tekisi.booking.request-ttl-minutes` (15),
+  `schedule-release-minutes` (30), `schedule-min-lead-minutes` (15),
+  `schedule-max-days` (14).
+
 ### 3.2b Trip progress and ratings
 
 `POST /api/bookings/create` accepts optional `pickupLat/pickupLng` and
