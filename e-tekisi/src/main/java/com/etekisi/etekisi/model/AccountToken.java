@@ -1,14 +1,16 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
 /** A one-time email link or SMS code. Only its SHA-256 hash is stored. */
 @Entity
 @Table(name = "account_tokens", schema = "commuter_schema")
-@Data
+@Getter
+@Setter
 public class AccountToken {
 
     public enum Purpose { VERIFY_EMAIL, VERIFY_PHONE, RESET_PASSWORD }

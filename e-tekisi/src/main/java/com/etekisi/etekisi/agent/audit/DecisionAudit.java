@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.agent.audit;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -20,7 +21,8 @@ import java.time.Instant;
         @Index(name = "idx_decision_audit_computed_at", columnList = "computedAt")
     }
 )
-@Data
+@Getter
+@Setter
 public class DecisionAudit {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

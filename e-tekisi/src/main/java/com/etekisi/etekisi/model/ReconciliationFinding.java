@@ -1,14 +1,16 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 
 /** Something that didn't add up in a {@link ReconciliationRun}. */
 @Entity
 @Table(name = "reconciliation_findings", schema = "commuter_schema")
-@Data
+@Getter
+@Setter
 public class ReconciliationFinding {
 
     public enum Severity { CRITICAL, WARNING }

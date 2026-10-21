@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -13,7 +14,8 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "reconciliation_runs", schema = "commuter_schema")
-@Data
+@Getter
+@Setter
 public class ReconciliationRun {
 
     /** OK: nothing found. WARNINGS: only explainable oddities. DISCREPANCIES: money doesn't add up. */

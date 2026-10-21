@@ -1,11 +1,13 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "routes", schema = "commuter_schema")
-@Data
+@Getter
+@Setter
 public class Route {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

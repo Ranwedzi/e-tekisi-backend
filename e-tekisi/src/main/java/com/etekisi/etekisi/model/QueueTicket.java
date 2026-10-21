@@ -1,13 +1,15 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
 @EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Queue.class)
 @Table(name = "queue_tickets", schema = "driver_schema")
-@Data
+@Getter
+@Setter
 public class QueueTicket {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

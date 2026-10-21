@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.agent.hotspot;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -20,7 +21,8 @@ import java.time.Instant;
            @Index(name = "idx_demand_pulse_bucket", columnList = "bucket_minute DESC"),
            @Index(name = "idx_demand_pulse_rank_bucket", columnList = "rank_name,bucket_minute DESC")
        })
-@Data
+@Getter
+@Setter
 public class DemandPulse {
 
     @Id

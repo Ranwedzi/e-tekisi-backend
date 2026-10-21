@@ -1,14 +1,16 @@
 package com.etekisi.etekisi.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
 @Entity
 @EntityListeners(com.etekisi.etekisi.realtime.LiveEntityListeners.Notifications.class)
 @Table(name = "notifications", schema = "commuter_schema")
-@Data
+@Getter
+@Setter
 public class DashboardNotification {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

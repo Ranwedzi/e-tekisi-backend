@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.agent.dispatch;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -23,7 +24,8 @@ import java.time.Instant;
            @Index(name = "idx_dispatch_rec_booking", columnList = "booking_id"),
            @Index(name = "idx_dispatch_rec_status_created", columnList = "status,created_at")
        })
-@Data
+@Getter
+@Setter
 public class DispatchRecommendation {
 
     public enum Status { PENDING, EXECUTED, REJECTED, EXPIRED }

@@ -1,7 +1,8 @@
 package com.etekisi.etekisi.agent.safety;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -27,7 +28,8 @@ import java.time.Instant;
     ),
     indexes = @Index(name = "idx_trip_routes_booking", columnList = "booking_id")
 )
-@Data
+@Getter
+@Setter
 public class TripRoute {
 
     @Id
