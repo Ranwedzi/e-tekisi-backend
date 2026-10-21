@@ -305,6 +305,31 @@ stream closes after 30 minutes, so reconnect. Events are sent after the
 change commits. The frontend's `useLivePolling` in `app/lib/live.ts` does all
 of this.
 
+### 3.2c Push notifications and the installable app
+
+Every in-app notification is also sent as a Web Push to the person's
+subscribed devices (title "e-Tekisi", `url` `/` or `/driver`), and a new
+request with pick-up coordinates is pushed to online, approved drivers seen
+within 10 km in the last 10 minutes ("New trip request", TTL 5 minutes).
+
+- `GET /api/push/key` (public): `{enabled, publicKey}`. Pass `publicKey`
+  (base64url) as `applicationServerKey` to `pushManager.subscribe`.
+- `POST /api/me/push` with `subscription.toJSON()`
+  (`{endpoint, keys: {p256dh, auth}}`): registers this browser for the
+  signed-in account. The same browser signing in as someone else takes the
+  subscription over. 400 `INVALID_SUBSCRIPTION` unless the endpoint is an
+  https URL on a browser push service (FCM, Mozilla, Apple, Windows);
+  503 `PUSH_DISABLED` when the server has no keys. At most 10 devices.
+- `POST /api/me/push/unsubscribe` `{endpoint}`: call on sign-out.
+- `GET /api/me/push`: `{enabled, devices}`.
+
+The frontend's `public/sw.js` shows the notifications and opens `url` on tap,
+and serves `/offline.html` when a page can't load; `app/lib/push.ts` handles
+permission, subscribing, re-sending the subscription on start and
+unsubscribing on sign-out; `app/manifest.ts` and `/icons/*` make it
+installable. On iPhone, push only works once the app is added to the home
+screen (iOS 16.4+).
+
 ### 3.3a Money limits and risk holds
 
 Top-ups and payouts are refused with `409 LIMIT_REACHED` (and `limit`,

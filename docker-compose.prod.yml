@@ -66,6 +66,10 @@ services:
       SMS_FROM: ${SMS_FROM:-}
       LEGAL_VERSION: ${LEGAL_VERSION:?set LEGAL_VERSION}
       STAFF_MFA_REQUIRED: ${STAFF_MFA_REQUIRED:-true}
+      # Push notifications (scripts/vapid-keys.sh). Unset = no push.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # Required before running a second backend instance (perf/CLUSTER.md).
       REDIS_ENABLED: ${REDIS_ENABLED:-false}
       REDIS_HOST: ${REDIS_HOST:-}

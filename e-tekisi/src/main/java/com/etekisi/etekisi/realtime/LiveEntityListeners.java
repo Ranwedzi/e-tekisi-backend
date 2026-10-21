@@ -2,6 +2,7 @@ package com.etekisi.etekisi.realtime;
 
 import com.etekisi.etekisi.agent.insight.OperationalInsight;
 import com.etekisi.etekisi.model.*;
+import com.etekisi.etekisi.push.PushService;
 import jakarta.persistence.PostPersist;
 import jakarta.persistence.PostRemove;
 import jakarta.persistence.PostUpdate;
@@ -21,12 +22,20 @@ public final class LiveEntityListeners {
     @Component
     public static class Bookings {
         private final ObjectProvider<LiveEvents> events;
+        private final ObjectProvider<PushService> push;
 
-        public Bookings(ObjectProvider<LiveEvents> events) {
+        public Bookings(ObjectProvider<LiveEvents> events, ObjectProvider<PushService> push) {
             this.events = events;
+            this.push = push;
         }
 
         @PostPersist
+        void created(Booking b) {
+            changed(b);
+            PushService p = push.getIfAvailable();
+            if (p != null && b.getStatus() == BookingStatus.PENDING) p.newRequestAfterCommit(b.getId());
+        }
+
         @PostUpdate
         void changed(Booking b) {
             LiveEvents e = events.getIfAvailable();
@@ -42,12 +51,25 @@ public final class LiveEntityListeners {
     @Component
     public static class Notifications {
         private final ObjectProvider<LiveEvents> events;
+        private final ObjectProvider<PushService> push;
 
-        public Notifications(ObjectProvider<LiveEvents> events) {
+        public Notifications(ObjectProvider<LiveEvents> events, ObjectProvider<PushService> push) {
             this.events = events;
+            this.push = push;
         }
 
+        /** A new notification also goes to the person's devices, so they hear about it with the app closed. */
         @PostPersist
+        void created(DashboardNotification n) {
+            changed(n);
+            PushService p = push.getIfAvailable();
+            if (p != null && n.getRole() != null) {
+                String url = n.getRole() == Role.DRIVER ? "/driver" : "/";
+                p.toUserAfterCommit(n.getRole(), n.getUserId(),
+                        new PushService.Payload("e-Tekisi", n.getMessage(), url, "notification-" + n.getId()));
+            }
+        }
+
         @PostUpdate
         @PostRemove
         void changed(DashboardNotification n) {
