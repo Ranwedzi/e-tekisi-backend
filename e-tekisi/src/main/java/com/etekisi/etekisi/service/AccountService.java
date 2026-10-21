@@ -6,6 +6,7 @@ import com.etekisi.etekisi.dto.api.ApiRecords.WalletDto;
 import com.etekisi.etekisi.dto.api.BookingDto;
 import com.etekisi.etekisi.dto.api.CommuterDto;
 import com.etekisi.etekisi.dto.api.DriverDto;
+import com.etekisi.etekisi.push.PushService;
 import com.etekisi.etekisi.model.*;
 import com.etekisi.etekisi.repository.*;
 import com.etekisi.etekisi.web.ApiException;
@@ -52,13 +53,15 @@ public class AccountService {
     private final DriverLocationRepository locations;
     private final BCryptPasswordEncoder passwords;
     private final DriverDocumentService driverDocuments;
+    private final PushService push;
 
     public AccountService(UserRepository users, DriverRepository drivers, BookingRepository bookings,
                           WalletRepository wallets, WalletTransactionRepository ledger,
                           PayoutRequestRepository payouts, MessageRepository messages,
                           NotificationRepository notifications, SavedRankRepository savedRanks,
                           QueueRepository queue, DriverLocationRepository locations,
-                          BCryptPasswordEncoder passwords, DriverDocumentService driverDocuments) {
+                          BCryptPasswordEncoder passwords, DriverDocumentService driverDocuments,
+                          PushService push) {
         this.users = users;
         this.drivers = drivers;
         this.bookings = bookings;
@@ -72,6 +75,7 @@ public class AccountService {
         this.locations = locations;
         this.passwords = passwords;
         this.driverDocuments = driverDocuments;
+        this.push = push;
     }
 
     // ------------------------------------------------------------------ export --
@@ -204,6 +208,7 @@ public class AccountService {
 
         messages.redactBySender(id, role);
         notifications.deleteByUserIdAndRole(id, role);
+        push.forgetAll(role, id);
         log.info("account.deleted role={} id={}", role, id);
     }
 

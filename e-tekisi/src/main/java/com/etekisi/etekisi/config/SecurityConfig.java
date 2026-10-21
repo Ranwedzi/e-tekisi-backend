@@ -89,6 +89,8 @@ public class SecurityConfig {
                                 // Second step of staff sign-in; protected by the one-time challenge.
                                 "/api/auth/mfa/**",
                                 "/api/legal",
+                                // VAPID public key for browser push subscriptions.
+                                "/api/push/key",
                                 "/actuator/health",
                                 "/actuator/health/**",
                                 "/actuator/info",

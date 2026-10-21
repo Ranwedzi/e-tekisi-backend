@@ -124,6 +124,7 @@ Everything sensitive comes from environment variables; see
 | `DRIVER_REQUIRED_DOCUMENTS` (`DRIVERS_LICENCE,PRDP,OPERATING_LICENCE`) | documents an operator must accept before approving a driver |
 | `STAFF_MFA_REQUIRED` (prod `true`, dev `false`) | operators/admins must use an authenticator app code at sign-in |
 | `REDIS_ENABLED`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | shared state and live events for more than one backend instance (`perf/CLUSTER.md`); scheduled jobs are locked in Postgres either way |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | push notifications with the app closed. Make the pair once with `sh scripts/vapid-keys.sh` and keep it (new keys break every subscription). Unset: dev makes temporary keys, prod/staging turn push off |
 | `LOGIN_IP_REQUESTS_PER_MINUTE` (60) | per-IP limit on sign-in/sign-up/reset; account lockout after 5 wrong passwords is separate |
 | `SAFETY_ALERT_WEBHOOK`, `SAFETY_ALERT_WEBHOOK_FORMAT`, `SAFETY_ALERT_WEBHOOK_SECRET` | pages on-call for panic-button alerts (generic JSON or PagerDuty) |
 | `METRICS_USERNAME`, `METRICS_PASSWORD` | HTTP Basic for the Prometheus scraper on `/actuator/prometheus` |

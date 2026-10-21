@@ -41,6 +41,9 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: dev
+      # Optional: a fixed push key pair so subscriptions survive restarts (scripts/vapid-keys.sh).
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-etekisi_db}
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}

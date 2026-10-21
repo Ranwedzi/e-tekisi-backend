@@ -24,6 +24,15 @@ frontend. Backend, frontend and Postgres are not published on the host.
    unacknowledged for 5 minutes fires `SafetyAlertUnacknowledged` as a
    second page.
 
+6. **Push notifications:** run `sh scripts/vapid-keys.sh` once, put the two
+   lines in `.env.prod` with `VAPID_SUBJECT=mailto:<your ops address>`, and
+   keep them with your other secrets. Never regenerate them: every phone's
+   subscription is tied to the public key and would silently stop. Without
+   them the app still works, with in-app notifications only. Check by turning
+   notifications on under Profile on a phone, closing the app and having a
+   driver send it an offer. `tekisi_push_sent_total` / `tekisi_push_failed_total`
+   in Prometheus show delivery.
+
 **Updating:** `git pull` in both repos, then re-run step 3. Flyway migrates
 the database on start; the backend refuses to start if the entities and
 schema disagree. Take a backup first (`docs/BACKUP_RESTORE.md`).
