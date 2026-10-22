@@ -108,7 +108,7 @@
         <dependency>
             <groupId>net.logstash.logback</groupId>
             <artifactId>logstash-logback-encoder</artifactId>
-            <version>8.0</version>
+            <version>9.0</version>
         </dependency>
 
         <!-- OpenAPI 3 / Swagger UI for the frontend. Adds GET /v3/api-docs and
