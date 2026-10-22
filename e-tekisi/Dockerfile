@@ -23,7 +23,7 @@ RUN mvn -B -ntp -DskipTests package \
     && cp target/*.jar /workspace/app.jar
 
 # ---- Runtime stage ----
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:24-jre-alpine
 
 # Non-root user — least privilege.
 RUN addgroup -S tekisi && adduser -S -G tekisi tekisi
