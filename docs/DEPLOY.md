@@ -106,9 +106,12 @@ by the Playwright suite. Set these once in each repository's settings:
   (in the frontend repo): `owner/name` of the other repo;
 - secret `CROSS_REPO_TOKEN`: a fine-grained token with read access to the
   other repo (only needed if it is private);
-- secret `NVD_API_KEY` (backend repo): free key from nvd.nist.gov for the
-  OWASP dependency check, which now fails the build on CVSS 7+ findings.
-  Suppress vetted false positives in `e-tekisi/dependency-check-suppressions.xml`.
+
+Known vulnerabilities in dependencies are tracked by GitHub Dependabot
+(`.github/dependabot.yml` in each repo): alerts on the repository's Security
+tab, pull requests that fix vulnerable versions, and a weekly batch of
+version updates for Maven, npm, Docker images and the CI actions. Review and
+merge them like any other change; CI runs on each.
 
 The frontend build also fails on high-severity `npm audit` findings in
 production dependencies. To run the full-stack suite locally, stop the dev
@@ -237,7 +240,8 @@ kubectl rollout status deployment/tekisi
 
 ## Pre-deploy checklist
 
-- [ ] CI green on the merge commit (`mvn verify` + secret-grep + dependency-check).
+- [ ] CI green on the merge commit (`mvn verify` + secret-grep), and no open
+      high or critical Dependabot alert.
 - [ ] Image tag matches the commit SHA (no `latest`).
 - [ ] Flyway migrations checked in are backward-compatible with the
       currently-deployed app.
