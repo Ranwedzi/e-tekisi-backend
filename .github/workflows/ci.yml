@@ -92,7 +92,7 @@ jobs:
           token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
           path: frontend
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
 
