@@ -280,6 +280,24 @@ that fix them, and proposes version updates weekly. A full-stack browser
 test job runs once the repository variable `FRONTEND_REPOSITORY` is set
 (`Ranwedzi/e-tekisi-frontend`).
 
+## Keeping dependencies up to date
+
+Dependabot (`.github/dependabot.yml`) opens pull requests:
+- every Monday, for Maven libraries, the Docker base images and the GitHub
+  Actions, with minor and patch updates grouped into one request per type;
+- at any time, when a library has a known security hole (these also show
+  on the repository's **Security** tab).
+
+How to handle them:
+- **Security fixes:** merge them as soon as CI is green.
+- **Minor and patch groups:** merge when CI is green.
+- **Java versions:** stay on long-term-support Java (21 now, 25 next).
+  Close updates to Java 24 or 26 images, and comment
+  `@dependabot ignore this major version`.
+- **Major library upgrades** (for example springdoc 2 → 3, or a new Spring
+  Boot major): treat each as its own piece of work. Read the release notes,
+  test it, and merge only when it works.
+
 ## Deployment
 
 | Setup | How |
