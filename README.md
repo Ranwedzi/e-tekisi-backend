@@ -273,8 +273,10 @@ cd e-tekisi
 The web app has its own unit tests (Vitest) and browser tests (Playwright);
 see its README.
 
-On GitHub, CI builds and tests the backend, runs a dependency vulnerability
-check and a secret scan, and builds the Docker image. A full-stack browser
+On GitHub, CI builds and tests the backend, runs a secret scan, and builds
+the Docker image. Dependabot (`.github/dependabot.yml`) watches the
+dependencies: it raises alerts for known vulnerabilities, opens pull requests
+that fix them, and proposes version updates weekly. A full-stack browser
 test job runs once the repository variable `FRONTEND_REPOSITORY` is set
 (`Ranwedzi/e-tekisi-frontend`).
 
