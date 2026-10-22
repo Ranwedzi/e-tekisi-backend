@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # "Run workflow" button on the Actions tab, for re-running main by hand.
+  workflow_dispatch:
 
 permissions:
   contents: read
