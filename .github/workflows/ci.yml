@@ -18,10 +18,10 @@ jobs:
         working-directory: e-tekisi
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -32,7 +32,7 @@ jobs:
 
       - name: Upload Surefire reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: surefire-reports
           path: e-tekisi/target/surefire-reports/
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Fail if the retired dev password reappears
         # `etekisi@123` was once committed as the local DB password. It is no
@@ -94,11 +94,11 @@ jobs:
 
       - name: Checkout
         if: env.NVD_API_KEY != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 21
         if: env.NVD_API_KEY != ''
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -106,7 +106,7 @@ jobs:
 
       - name: Cache the vulnerability database
         if: env.NVD_API_KEY != ''
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
           key: owasp-db-${{ github.run_id }}
@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload the report
         if: always() && env.NVD_API_KEY != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dependency-check-report
           path: e-tekisi/target/dependency-check-report.*
@@ -140,18 +140,18 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout backend
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: backend
 
       - name: Checkout frontend
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ vars.FRONTEND_REPOSITORY }}
           token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
           path: frontend
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
 
@@ -160,7 +160,7 @@ jobs:
 
       - name: Upload Playwright results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-results
           path: frontend/test-results/
@@ -172,13 +172,13 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build (no push)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: e-tekisi
           file: e-tekisi/Dockerfile
